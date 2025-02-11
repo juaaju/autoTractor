@@ -11,7 +11,7 @@ function App() {
             <Link to="/" className="text-white hover:text-gray-300">Beranda</Link>
           </li>
           <li>
-            <Link to="/motor-control" className="text-white hover:text-gray-300">Kontrol Motor</Link>
+            <Link to="/motor-control" className="text-white hover:text-gray-300">Kontrol Manual</Link>
           </li>
           <li>
             <Link to="/chart" className="text-white hover:text-gray-300">Grafik IMU-GPS</Link>
