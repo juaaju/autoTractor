@@ -45,5 +45,20 @@ def update_data():
 def get_data():
     return jsonify(sensor_data), 200
 
+# proses data form
+@app.route('/process_data', methods=['POST'])
+def process_data():
+    data = request.get_json()
+
+    tractor_position = data['tractorPosition']
+    field_points = data['fieldPoints']
+
+    # Proses data
+    time.sleep(5)  # Simulasi pengolahan data
+
+    # Kembalikan respons setelah selesai
+    return jsonify({"message": "Data telah diproses."}), 200
+
+
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000, debug=True)
