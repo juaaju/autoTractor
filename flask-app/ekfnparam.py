@@ -43,7 +43,7 @@ class EKFSensorFusion:
         self.dt = dt
 
         # Process noise
-        self.Q = np.diag([0.1, 0.1])  # [angular acceleration noise, linear acceleration noise]
+        self.Q = np.diag([0.1*10, 0.1*10])  # [angular acceleration noise, linear acceleration noise]
 
         # Measurement noise
         self.R = np.diag([5.0, 5.0, 0.1, 0.1])  # [GPS_x, GPS_y, accel, gyro]
