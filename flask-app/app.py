@@ -46,12 +46,14 @@ def get_data():
     return jsonify(sensor_data), 200
 
 # proses data form
-@app.route('/process_data', methods=['POST'])
+@app.route('/initial_data', methods=['POST'])
 def process_data():
     data = request.get_json()
 
     tractor_position = data['tractorPosition']
     field_points = data['fieldPoints']
+
+    print(tractor_position, field_points)
 
     # Proses data
     time.sleep(5)  # Simulasi pengolahan data

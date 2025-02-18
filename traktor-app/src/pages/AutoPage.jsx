@@ -13,7 +13,7 @@ function AutoPage() {
 
     try {
       // Mengirim data ke Flask API
-      const response = await fetch("http://localhost:5000/process_data", {
+      const response = await fetch("http://localhost:5000/initial_data", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
