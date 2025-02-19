@@ -1,7 +1,9 @@
 from flask import Flask, render_template, jsonify, request
 import serial
+import requests
 import time
 from flask_cors import CORS
+import random
 
 app = Flask(__name__)
 CORS(app)
@@ -45,22 +47,50 @@ def update_data():
 def get_data():
     return jsonify(sensor_data), 200
 
-# proses data form
+#===== Untuk data inisialisasi =================
+# Endpoint untuk menerima data inisialisasi
 @app.route('/initial_data', methods=['POST'])
 def process_data():
+    global stored_data  # Gunakan variabel global
+
     data = request.get_json()
+    
+    tractor_position = data.get('tractorPosition', {})
+    field_points = data.get('fieldPoints', [])
 
-    tractor_position = data['tractorPosition']
-    field_points = data['fieldPoints']
+    print("Received:", tractor_position, field_points)
 
-    print(tractor_position, field_points)
+    # Simulasi pemrosesan data
+    time.sleep(5)  
 
-    # Proses data
-    time.sleep(5)  # Simulasi pengolahan data
+    # Simpan data untuk diakses nanti
+    stored_data = {
+        "tractorPosition": tractor_position,
+        "fieldPoints": field_points
+    }
 
-    # Kembalikan respons setelah selesai
-    return jsonify({"message": "Data telah diproses."}), 200
+    return jsonify({"message": "Data telah diproses dan disimpan."}), 200
 
+# Endpoint untuk mengirim data ke React (GET)
+@app.route('/data-form', methods=['GET'])
+def send_data():
+    global stored_data
+    if not stored_data:
+        return jsonify({"error": "Belum ada data"}), 404
+    return jsonify(stored_data), 200
+
+#=====untuk mengirim data gps==============
+# Simulate database or sensor readings
+def get_current_gps_data():
+    # In real application, this would come from actual GPS sensors or database
+    return {
+        "latitude": 51.505 + random.uniform(-0.01, 0.01),
+        "longitude": -0.09 + random.uniform(-0.01, 0.01)
+    }
+
+@app.route('/api/gps-data', methods=['GET'])
+def gps_data():
+    return jsonify(get_current_gps_data())
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000, debug=True)
