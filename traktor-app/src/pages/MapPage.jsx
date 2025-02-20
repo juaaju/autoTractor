@@ -79,7 +79,7 @@ function MapPage() {
     // Set up polling interval
     const interval = setInterval(() => {
       fetchGpsData();
-    }, 5000); // Poll every 5 seconds
+    }, 1000); // Poll every 5 seconds
 
     // Cleanup on component unmount
     return () => clearInterval(interval);

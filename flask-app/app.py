@@ -4,10 +4,13 @@ import requests
 import time
 from flask_cors import CORS
 import random
+from realtimefusion import DataCollector
 
 app = Flask(__name__)
 CORS(app)
 
+# Variabel global untuk menyimpan data terbaru
+latest_data = {}
 sensor_data = {"temperature": 0, "accel.x": 0}
 
 # Inisialisasi komunikasi serial
@@ -63,6 +66,10 @@ def process_data():
     # Simulasi pemrosesan data
     time.sleep(5)  
 
+    # collector = DataCollector()
+    # sensor_data = collector.get_latest_data()
+    # print(sensor_data)
+
     # Simpan data untuk diakses nanti
     stored_data = {
         "tractorPosition": tractor_position,
@@ -91,6 +98,31 @@ def get_current_gps_data():
 @app.route('/api/gps-data', methods=['GET'])
 def gps_data():
     return jsonify(get_current_gps_data())
+#===================================================
+@app.route('/data_latlon', methods=['POST'])
+def data_latlon():
+    """
+    Menerima data dari client dan menyimpannya.
+    """
+    global latest_data
+    data = request.get_json()
+
+    if data is None:
+        return jsonify({"error": "Invalid JSON"}), 400
+
+    print(f"Received data: {data}")
+
+    # Simpan data terbaru
+    latest_data = data
+
+    return jsonify({"status": "success"}), 200
+
+@app.route('/get_datalatlon', methods=['GET'])
+def get_datalatlon():
+    """
+    Mengembalikan data terbaru untuk front-end.
+    """
+    return jsonify(latest_data)
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000, debug=True)

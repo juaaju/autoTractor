@@ -228,5 +228,9 @@ def main():
         collector.stop()
         fusion.close()
 
+#data yang dikirim itu gps raw, imu odometry raw, dan hasil EKF, kirim untuk ditampilkan ke maps
+
+
 if __name__ == "__main__":
     main()
+
