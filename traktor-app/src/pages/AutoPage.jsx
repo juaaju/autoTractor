@@ -48,7 +48,7 @@ function AutoPage() {
           {isProcessing && (
             <div className="flex justify-center items-center mt-4">
               <LoadingComp/>
-              <span className="ml-4 text-lg font-semibold">Mohon Tunggu...</span>
+              <span className="ml-4 text-lg font-semibold">Perencanaan Jalur...</span>
             </div>
           )}
         </>

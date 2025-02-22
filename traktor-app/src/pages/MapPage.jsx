@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import MapComponent from '../components/MapComponent';
+import SimulationPage from './SimulationPage';
 
 function MapPage() {
   const [gpsData, setGpsData] = useState({
@@ -87,12 +88,14 @@ function MapPage() {
 
   return (
     <div className="container mx-auto">
-      <h1 className="text-center text-2xl font-semibold mb-4">Map of Tractor's Location</h1>
-      <MapComponent 
+      <h1 className="flex font-bold m-4 text-3xl text-gray-800 justify-center">Peta Realtime </h1>
+      <SimulationPage/>
+      <MapComponent
         gpsData={gpsData} 
         tractorPosition={tractorPosition} 
         fieldCoords={fieldCoords} 
       />
+      
     </div>
   );
 }

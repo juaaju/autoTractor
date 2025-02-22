@@ -24,33 +24,35 @@ function MapComponent({ gpsData, tractorPosition, fieldCoords }) {
     .map((coord) => [parseFloat(coord.lat), parseFloat(coord.long)]);
 
   return (
-    <MapContainer center={livePosition} zoom={25} style={{ height: "500px", width: "100%" }}>
-      <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+    <div className="bg-white p-6 rounded-lg shadow-lg">
+      <MapContainer center={livePosition} zoom={25} style={{ height: "500px", width: "100%" }}>
+        <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
 
-      {/* Marker posisi real-time */}
-      <Marker position={livePosition}>
-        <Popup>
-          Lokasi Saat Ini: {livePosition[0].toFixed(5)}, {livePosition[1].toFixed(5)}
-        </Popup>
-      </Marker>
-
-      {/* Marker posisi awal traktor */}
-      {tractorPos && (
-        <Marker position={tractorPos}>
-          <Popup>Posisi Awal Traktor</Popup>
+        {/* Marker posisi real-time */}
+        <Marker position={livePosition}>
+          <Popup>
+            Lokasi Saat Ini: {livePosition[0].toFixed(5)}, {livePosition[1].toFixed(5)}
+          </Popup>
         </Marker>
-      )}
 
-      {/* Poligon koordinat sawah */}
-      {fieldPolygon.length === 4 && (
-        <Polygon positions={fieldPolygon} color="blue">
-          <Popup>Area Sawah</Popup>
-        </Polygon>
-      )}
+        {/* Marker posisi awal traktor */}
+        {tractorPos && (
+          <Marker position={tractorPos}>
+            <Popup>Posisi Awal Traktor</Popup>
+          </Marker>
+        )}
 
-      {/* Polyline untuk melacak jalur perjalanan */}
-      {path.length > 1 && <Polyline positions={path} color="red" />}
-    </MapContainer>
+        {/* Poligon koordinat sawah */}
+        {fieldPolygon.length === 4 && (
+          <Polygon positions={fieldPolygon} color="blue">
+            <Popup>Area Sawah</Popup>
+          </Polygon>
+        )}
+
+        {/* Polyline untuk melacak jalur perjalanan */}
+        {path.length > 1 && <Polyline positions={path} color="red" />}
+      </MapContainer>
+    </div>
   );
 }
 

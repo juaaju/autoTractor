@@ -1,36 +1,46 @@
-import { BrowserRouter as Router, Routes, Route, Link } from 'react-router-dom';
+// src/App.jsx
+import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import ChartPage from './pages/ChartPage';
-import MotorControl from './pages/MotorControl'; // Halaman kontrol motor yang sudah ada
+import MotorControl from './pages/MotorControl';
 import AutoPage from './pages/AutoPage';
-import MapPage from './pages/MapPage'
+import MapPage from './pages/MapPage';
+import Home from './pages/Home';
+import SideBarLayout from './components/SideBar';
+import { useState, useEffect } from 'react';
 
 function App() {
+  const [isCollapsed, setIsCollapsed] = useState(false);
+
+  useEffect(() => {
+    const checkMobile = () => {
+      setIsCollapsed(window.innerWidth < 768);
+    };
+    
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+    return () => window.removeEventListener('resize', checkMobile);
+  }, []);
+
   return (
     <Router>
-      <nav className="flex bg-gray-800 p-4 justify-center">
-        <ul className="flex space-x-4">
-          <li>
-            <Link to="/" className="text-white hover:text-gray-300">Beranda</Link>
-          </li>
-          <li>
-            <Link to="/motor-control" className="text-white hover:text-gray-300">Kontrol Manual</Link>
-          </li>
-          <li>
-            <Link to="/auto" className="text-white hover:text-gray-300">Kontrol Otomatis</Link>
-          </li>
-          <li>
-            <Link to="/chart" className="text-white hover:text-gray-300">Grafik IMU-GPS</Link>
-          </li>
-        </ul>
-      </nav>
-
-      <Routes>
-        <Route path="/" />
-        <Route path="/motor-control" element={<MotorControl />} />
-        <Route path="/chart" element={<ChartPage />} />
-        <Route path="/auto" element={<AutoPage />} />
-        <Route path="/map" element={<MapPage/>} />
-      </Routes>
+      <div className="flex min-h-screen bg-gray-100">
+        <SideBarLayout isCollapsed={isCollapsed} setIsCollapsed={setIsCollapsed} />
+        <div 
+          className={`flex-1 ${
+            isCollapsed ? 'pl-16' : 'pl-64'
+          } transition-all duration-300 min-h-screen w-full`}
+        >
+          <main className="p-4">
+            <Routes>
+              <Route path="/" element={<Home/>}/>
+              <Route path="/motor-control" element={<MotorControl />} />
+              <Route path="/chart" element={<ChartPage />} />
+              <Route path="/auto" element={<AutoPage />} />
+              <Route path="/map" element={<MapPage />} />
+            </Routes>
+          </main>
+        </div>
+      </div>
     </Router>
   );
 }

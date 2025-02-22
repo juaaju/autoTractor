@@ -34,7 +34,7 @@ function MotorControl() {
 
   return (
 
-    <div className="App flex flex-col justify-center items-center min-h-screen">
+    <div className="h-[calc(100vh-2rem)] flex flex-col justify-center items-center">
       <h1 className=" mb-4 text-4xl font-extrabold leading-none tracking-tight text-gray-800 md:text-4xl lg:text-5xl">Kontrol Manual</h1>
       <div className="flex">
         <button onClick={turnRight} className="m-2 bg-blue-500 hover:bg-blue-400 text-white font-bold w-16 h-16 border-b-4 border-blue-700 hover:border-blue-500 rounded-full">Right</button>

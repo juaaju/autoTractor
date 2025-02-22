@@ -39,12 +39,12 @@ const TractorForm = ({ onSubmit }) => {
   };
 
   return (
-    <div className="max-w-2xl mx-auto p-6 bg-white rounded-xl shadow-lg">
-      <h1 className="text-2xl font-semibold text-center mb-6">Tractor Form</h1>
+    <div className="max-w-2xl mx-auto bg-white rounded-xl">
+      <h1 className="flex font-bold m-4 text-3xl text-gray-800 justify-center">Tractor Form</h1>
       <form onSubmit={handleSubmit}>
         {/* Form Posisi Traktor */}
         <div className="mb-4">
-          <label className="block text-lg font-medium text-gray-700">Tractor Position</label>
+          <label className="text-lg font-semibold text-gray-800 mb-2">Tractor Position</label>
           <div className="flex gap-4 mt-2">
             <div className="w-full">
               <label className="block text-sm font-medium text-gray-600">Latitude</label>
