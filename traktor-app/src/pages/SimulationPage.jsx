@@ -8,7 +8,7 @@ const SimulationPage = () => {
   const [showEKF, setShowEKF] = useState(true);
 
   return (
-    <div className="mb-6">
+    <div className="mb-6 hidden md:block">
       <div className="mb-6">
       </div>
 
@@ -21,7 +21,7 @@ const SimulationPage = () => {
           />
         </div>
 
-        <div className="bg-white p-6 rounded-lg shadow-lg">
+        <div className="bg-white p-6 rounded-lg shadow-lg ">
           <h2 className="text-xl font-bold mb-4">Pengaturan Visualisasi</h2>
           
           <div className="space-y-4">

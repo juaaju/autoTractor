@@ -7,42 +7,37 @@ function MapPage() {
     latitude: 51.505,
     longitude: -0.09,
   });
-  
-  // const [tractorPosition] = useState({
-  //   lat: 51.507,
-  //   long: -0.08,
-  // });
-  
-  // const [fieldCoords] = useState([
-  //   { lat: 51.501, long: -0.12 },
-  //   { lat: 51.503, long: -0.11 },
-  //   { lat: 51.504, long: -0.13 },
-  //   { lat: 51.502, long: -0.14 },
-  // ]);
-
   const [tractorPosition, setTractorPosition] = useState({ lat: 0, long: 0 });
   const [fieldCoords, setFieldCoords] = useState([]);
-
+  const [zigzagPath, setZigzagPath] = useState([]); // Tambahkan state untuk zigzagPath
+  
   // Fungsi untuk mengambil data dari /data-form
   const fetchFormData = async () => {
     try {
       const response = await fetch("http://localhost:5000/data-form");
       const data = await response.json();
-
       console.log("Data fetched:", data); // Debugging
-
+      
+      // Tambahkan pemrosesan data zigzag path
+      if (data.zigzag_path && Array.isArray(data.zigzag_path)) {
+        // Format zigzag_path menjadi format yang dibutuhkan oleh Leaflet
+        const formattedPath = data.zigzag_path.map(point => [
+          point[0], // latitude 
+          point[1]  // longitude
+        ]);
+        setZigzagPath(formattedPath);
+      }
+      
       if (data.tractorPosition && typeof data.fieldPoints === "object") {
         setTractorPosition({
           lat: parseFloat(data.tractorPosition.latitude),
           long: parseFloat(data.tractorPosition.longitude),
         });
-
         // Ubah fieldPoints (object) jadi array
         const fieldArray = Object.values(data.fieldPoints).map(point => ({
           lat: parseFloat(point.latitude),
           long: parseFloat(point.longitude),
         }));
-
         setFieldCoords(fieldArray);
       } else {
         console.error("Invalid data format:", data);
@@ -51,18 +46,7 @@ function MapPage() {
       console.error("Error fetching data:", error);
     }
   };
-
-  useEffect(() => {
-    fetchFormData();
-
-    // Refresh data setiap 5 detik (opsional)
-    const interval = setInterval(() => {
-      fetchFormData();
-    }, 5000);
-
-    return () => clearInterval(interval); // Cleanup saat komponen di-unmount
-  }, []);
-
+  
   const fetchGpsData = async () => {
     try {
       const response = await fetch('http://localhost:5000/api/gps-data');
@@ -72,30 +56,34 @@ function MapPage() {
       console.error('Error fetching GPS data:', error);
     }
   };
-
+  
   useEffect(() => {
-    // Initial fetch
+    // Initial fetch GPS data
     fetchGpsData();
-
-    // Set up polling interval
+    
+    // Initial fetch form data
+    fetchFormData(); // Tambahkan pemanggilan fetchFormData
+    
+    // Set up polling interval for GPS
     const interval = setInterval(() => {
       fetchGpsData();
-    }, 1000); // Poll every 5 seconds
-
+    }, 1000);
+    
     // Cleanup on component unmount
     return () => clearInterval(interval);
   }, []);
-
+  
   return (
     <div className="container mx-auto">
       <h1 className="flex font-bold m-4 text-3xl text-gray-800 justify-center">Peta Realtime </h1>
       <SimulationPage/>
+      {/* MapComponent dengan zigzagPath sebagai prop */}
       <MapComponent
         gpsData={gpsData} 
         tractorPosition={tractorPosition} 
-        fieldCoords={fieldCoords} 
+        fieldCoords={fieldCoords}
+        zigzagPath={zigzagPath}
       />
-      
     </div>
   );
 }

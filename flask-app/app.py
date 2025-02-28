@@ -5,6 +5,7 @@ import time
 from flask_cors import CORS
 import random
 from realtimefusion import DataCollector
+from pathplanning import generate_zigzag_path_90deg
 
 app = Flask(__name__)
 CORS(app)
@@ -14,7 +15,7 @@ latest_data = {}
 sensor_data = {"temperature": 0, "accel.x": 0}
 
 # Inisialisasi komunikasi serial
-ser = serial.Serial('/dev/ttyACM0', 9600, timeout=1)  # Sesuaikan dengan port yang digunakan
+ser = serial.Serial('/dev/ttyUSB0', 9600, timeout=1)  # Sesuaikan dengan port yang digunakan
 
 @app.route('/')
 def index():
@@ -36,7 +37,6 @@ def motor_off():
     return jsonify({"status": "MOTOR OFF"})
 
 # untuk kebutuh grafik mpu6050
-
 @app.route('/update_data', methods=['POST'])
 def update_data():
     global sensor_data
@@ -50,8 +50,8 @@ def update_data():
 def get_data():
     return jsonify(sensor_data), 200
 
-#===== Untuk data inisialisasi =================
-# Endpoint untuk menerima data inisialisasi
+#================================ Untuk data inisialisasi ==============================
+# Endpoint untuk menerima data inisialisasi dan proses path planning
 @app.route('/initial_data', methods=['POST'])
 def process_data():
     global stored_data  # Gunakan variabel global
@@ -63,30 +63,42 @@ def process_data():
 
     print("Received:", tractor_position, field_points)
 
-    # Simulasi pemrosesan data
-    time.sleep(5)  
+    # Simulasi pemrosesan data / loading
+    time.sleep(3)
 
-    # collector = DataCollector()
-    # sensor_data = collector.get_latest_data()
-    # print(sensor_data)
+    corners = [
+        (float(field_points['point1']['latitude']), float(field_points['point1']['longitude'])),  
+        (float(field_points['point2']['latitude']), float(field_points['point2']['longitude'])),
+        (float(field_points['point3']['latitude']), float(field_points['point3']['longitude'])),
+        (float(field_points['point4']['latitude']), float(field_points['point4']['longitude']))
+    ]
+
+    # Lebar alur pembajakan (meter)
+    swath_width = 2.0
+    
+    # Menghasilkan jalur zigzag dengan sudut 90 derajat
+    zigzag_path = generate_zigzag_path_90deg(corners, swath_width)
+    print(zigzag_path)
 
     # Simpan data untuk diakses nanti
     stored_data = {
         "tractorPosition": tractor_position,
-        "fieldPoints": field_points
+        "fieldPoints": field_points,
+        "zigzag_path": zigzag_path
     }
 
-    return jsonify({"message": "Data telah diproses dan disimpan."}), 200
+    return jsonify({"message": "Path planning sudah dibuat kemudian data telah diproses dan disimpan."}), 200
 
-# Endpoint untuk mengirim data ke React (GET)
+# ======= Endpoint untuk mengirim initial data dan path planning ke React (GET) =======
 @app.route('/data-form', methods=['GET'])
-def send_data():
+def send_data_path():
     global stored_data
     if not stored_data:
         return jsonify({"error": "Belum ada data"}), 404
     return jsonify(stored_data), 200
 
-#=====untuk mengirim data gps==============
+@app.route('/api/gps-data', methods=['GET'])
+# =====untuk mengirim data gps==============
 # Simulate database or sensor readings
 def get_current_gps_data():
     # In real application, this would come from actual GPS sensors or database
@@ -95,9 +107,9 @@ def get_current_gps_data():
         "longitude": -0.09 + random.uniform(-0.01, 0.01)
     }
 
-@app.route('/api/gps-data', methods=['GET'])
 def gps_data():
     return jsonify(get_current_gps_data())
+
 #===================================================
 @app.route('/data_latlon', methods=['POST'])
 def data_latlon():
