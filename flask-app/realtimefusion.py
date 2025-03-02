@@ -193,9 +193,13 @@ class RealTimeEKFSensorFusion:
         #REF_LAT Your reference latitude
         #REF_LNG Your reference longitude
         
+        if lat is None or lng is None:
+            # Return a default value or raise a more informative error
+            return 0.0, 0.0  # or return None, None
+        
+        # Original conversion code
         x = EARTH_RADIUS * math.cos(REF_LAT) * (lng - REF_LNG)
         y = EARTH_RADIUS * (lat - REF_LAT)
-        
         return x, y
 
     def close(self):

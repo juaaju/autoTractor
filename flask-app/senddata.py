@@ -1,30 +1,44 @@
 from realtimefusion import DataCollector, RealTimeEKFSensorFusion
 import math
-import requests
 import json
+from flask import Flask, jsonify
+import threading
+import time
+from flask_cors import CORS
 
-# Server Flask
-FLASK_SERVER_URL = "http://localhost:5000/data_latlon"
+# Create Flask app
+app = Flask(__name__)
+CORS(app)
 
-def send_data_to_flask(sensor_data, x_imu, y_imu, theta_imu, ekf_x, ekf_y):
+# Global variable to store latest sensor data
+latest_data = {}
+
+@app.route('/data_sensor', methods=['GET'])
+def get_data():
     """
-    Mengirim data ke server Flask dalam format JSON.
+    Endpoint to get the latest sensor data through a GET request.
     """
-    data = {
+    return jsonify(latest_data)
+
+def update_latest_data(sensor_data, x_imu, y_imu, imu_lat, imu_lng, theta_imu, ekf_x, ekf_y, ekf_lat, ekf_lng):
+    """
+    Update the global latest_data variable with new sensor readings.
+    """
+    global latest_data
+    latest_data = {
         "gps_lat": sensor_data.gps_lat,
         "gps_lng": sensor_data.gps_lng,
         "imu_x": x_imu,
         "imu_y": y_imu,
+        "imu_lat": imu_lat,
+        "imu_lng": imu_lng,
         "imu_heading": math.degrees(theta_imu),
         "ekf_x": ekf_x,
-        "ekf_y": ekf_y
+        "ekf_y": ekf_y,
+        "ekf_lat": ekf_lat,
+        "ekf_lng": ekf_lng,
+        "timestamp": time.time()
     }
-
-    try:
-        response = requests.post(FLASK_SERVER_URL, json=data)
-        print("Response from server:", response.text)
-    except requests.exceptions.RequestException as e:
-        print("Error sending data:", e)
 
 # Konstanta
 R = 6371000  # Jari-jari bumi dalam meter
@@ -77,7 +91,18 @@ def odometry_imu(sensor_data, dt, state):
 
     return x_global, y_global, state["theta"]
 
+def run_flask():
+    """
+    Run the Flask server in a separate thread.
+    """
+    app.run(host='0.0.0.0', port=5001, debug=False, threaded=True)
+
 def main():
+    # Start Flask server in a separate thread
+    flask_thread = threading.Thread(target=run_flask)
+    flask_thread.daemon = True  # This ensures the thread will exit when the main program exits
+    flask_thread.start()
+    
     # Initialize data collector
     collector = DataCollector()
     
@@ -90,6 +115,8 @@ def main():
 
     try:
         print("Starting sensor fusion...")
+        print("Data is now accessible via GET at http://localhost:5001/data_sensor")
+        
         while True:
             # Get latest sensor data
             sensor_data = collector.get_latest_data()
@@ -110,13 +137,15 @@ def main():
             # Print hasil EKF dan odometri IMU
             print(f"Position EKF: ({estimated_state[0]:.2f}, {estimated_state[1]:.2f}), "
                   f"Heading: {math.degrees(estimated_state[2]):.1f}°"
-                  f"Position GPS, x: {gps_x}, y: {gps_y}")
+                  f"Position GPS, gps_x: {gps_x}, gps_y: {gps_y}")
             
-            print(f"Position IMU: ({x_imu:.2f}, {y_imu:.2f}), Heading: {math.degrees(theta_imu):.1f}°")
+            #print(f"Position IMU: ({x_imu:.2f}, {y_imu:.2f}), Heading: {math.degrees(theta_imu):.1f}°")
 
-            print(f"LAT LON, gps_lat: {sensor_data.gps_lat,}, gps_lng: {sensor_data.gps_lng}, imu_lat: {imu_lat}, imu_lng: {imu_lon}, ekf_lat: {ekf_lat}, ekf_lon: {ekf_lon}")
+            #print(f"LAT LON, gps_lat: {sensor_data.gps_lat,}, gps_lng: {sensor_data.gps_lng}, imu_lat: {imu_lat}, imu_lng: {imu_lon}, ekf_lat: {ekf_lat}, ekf_lon: {ekf_lon}")
 
-            send_data_to_flask(sensor_data, x_imu, y_imu, theta_imu, estimated_state[0], estimated_state[1])
+            # Update the latest data instead of sending it to a server
+            update_latest_data(sensor_data, x_imu, y_imu, imu_lat, imu_lon, theta_imu, 
+                             estimated_state[0], estimated_state[1], ekf_lat, ekf_lon)
 
     except KeyboardInterrupt:
         print("\nStopping sensor fusion...")

@@ -7,23 +7,32 @@ function MapPage() {
     latitude: 51.505,
     longitude: -0.09,
   });
+  
+  const [imuData, setIMUData] = useState({
+    latitude: 51.505,
+    longitude: -0.09,
+  });
+  
+  const [ekfData, setEKFData] = useState({  // Added EKF state
+    latitude: 51.505,
+    longitude: -0.09,
+  });
+  
   const [tractorPosition, setTractorPosition] = useState({ lat: 0, long: 0 });
   const [fieldCoords, setFieldCoords] = useState([]);
-  const [zigzagPath, setZigzagPath] = useState([]); // Tambahkan state untuk zigzagPath
+  const [zigzagPath, setZigzagPath] = useState([]);
   
-  // Fungsi untuk mengambil data dari /data-form
+  // Fetch form data
   const fetchFormData = async () => {
     try {
       const response = await fetch("http://localhost:5000/data-form");
       const data = await response.json();
-      console.log("Data fetched:", data); // Debugging
+      console.log("Data fetched:", data);
       
-      // Tambahkan pemrosesan data zigzag path
       if (data.zigzag_path && Array.isArray(data.zigzag_path)) {
-        // Format zigzag_path menjadi format yang dibutuhkan oleh Leaflet
         const formattedPath = data.zigzag_path.map(point => [
-          point[0], // latitude 
-          point[1]  // longitude
+          point[0], 
+          point[1]
         ]);
         setZigzagPath(formattedPath);
       }
@@ -33,7 +42,7 @@ function MapPage() {
           lat: parseFloat(data.tractorPosition.latitude),
           long: parseFloat(data.tractorPosition.longitude),
         });
-        // Ubah fieldPoints (object) jadi array
+        
         const fieldArray = Object.values(data.fieldPoints).map(point => ({
           lat: parseFloat(point.latitude),
           long: parseFloat(point.longitude),
@@ -49,7 +58,7 @@ function MapPage() {
   
   const fetchGpsData = async () => {
     try {
-      const response = await fetch('http://localhost:5000/api/gps-data');
+      const response = await fetch('http://localhost:5000/api/gps-dummy');
       const data = await response.json();
       setGpsData(data);
     } catch (error) {
@@ -57,29 +66,54 @@ function MapPage() {
     }
   };
   
+  const fetchIMUData = async () => {
+    try {
+      const response = await fetch('http://localhost:5000/api/imu-dummy');
+      const data = await response.json();
+      setIMUData(data);  // FIXED: Now correctly updates IMU data
+    } catch (error) {
+      console.error('Error fetching IMU data:', error);
+    }
+  };
+  
+  const fetchEKFData = async () => {  // Added EKF data fetch
+    try {
+      const response = await fetch('http://localhost:5000/api/ekf-dummy');
+      const data = await response.json();
+      setEKFData(data);
+    } catch (error) {
+      console.error('Error fetching EKF data:', error);
+    }
+  };
+  
   useEffect(() => {
-    // Initial fetch GPS data
+    // Initial fetch for all data
     fetchGpsData();
+    fetchIMUData();
+    fetchEKFData();
+    fetchFormData();
     
-    // Initial fetch form data
-    fetchFormData(); // Tambahkan pemanggilan fetchFormData
-    
-    // Set up polling interval for GPS
-    const interval = setInterval(() => {
-      fetchGpsData();
-    }, 1000);
+    // Set up polling intervals
+    const gpsInterval = setInterval(fetchGpsData, 1000);
+    const imuInterval = setInterval(fetchIMUData, 1000);
+    const ekfInterval = setInterval(fetchEKFData, 1000);
     
     // Cleanup on component unmount
-    return () => clearInterval(interval);
+    return () => {
+      clearInterval(gpsInterval);
+      clearInterval(imuInterval);
+      clearInterval(ekfInterval);
+    };
   }, []);
   
   return (
     <div className="container mx-auto">
-      <h1 className="flex font-bold m-4 text-3xl text-gray-800 justify-center">Peta Realtime </h1>
+      <h1 className="flex font-bold m-4 text-3xl text-gray-800 justify-center">Peta Realtime</h1>
       <SimulationPage/>
-      {/* MapComponent dengan zigzagPath sebagai prop */}
       <MapComponent
         gpsData={gpsData} 
+        imuData={imuData}
+        ekfData={ekfData}  // Added EKF data prop
         tractorPosition={tractorPosition} 
         fieldCoords={fieldCoords}
         zigzagPath={zigzagPath}

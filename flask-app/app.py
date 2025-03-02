@@ -10,12 +10,8 @@ from pathplanning import generate_zigzag_path_90deg
 app = Flask(__name__)
 CORS(app)
 
-# Variabel global untuk menyimpan data terbaru
-latest_data = {}
-sensor_data = {"temperature": 0, "accel.x": 0}
-
 # Inisialisasi komunikasi serial
-ser = serial.Serial('/dev/ttyUSB0', 9600, timeout=1)  # Sesuaikan dengan port yang digunakan
+ser = serial.Serial('/dev/ttyACM0', 9600, timeout=1)  # Sesuaikan dengan port yang digunakan
 
 @app.route('/')
 def index():
@@ -35,20 +31,6 @@ def turn_left():
 def motor_off():
     ser.write(b'stop')  # Mengirim perintah ke Arduino untuk mematikan LED
     return jsonify({"status": "MOTOR OFF"})
-
-# untuk kebutuh grafik mpu6050
-@app.route('/update_data', methods=['POST'])
-def update_data():
-    global sensor_data
-    data = request.json
-    if data:  # Pastikan data tidak kosong
-        sensor_data = data
-        return jsonify({"message": "Data updated successfully"}), 200
-    return jsonify({"error": "Invalid data format"}), 400
-
-@app.route('/get_data', methods=['GET'])
-def get_data():
-    return jsonify(sensor_data), 200
 
 #================================ Untuk data inisialisasi ==============================
 # Endpoint untuk menerima data inisialisasi dan proses path planning
@@ -97,7 +79,9 @@ def send_data_path():
         return jsonify({"error": "Belum ada data"}), 404
     return jsonify(stored_data), 200
 
-@app.route('/api/gps-data', methods=['GET'])
+
+# ======================= Data dummy ====================
+@app.route('/api/gps-dummy', methods=['GET'])
 # =====untuk mengirim data gps==============
 # Simulate database or sensor readings
 def get_current_gps_data():
@@ -110,31 +94,33 @@ def get_current_gps_data():
 def gps_data():
     return jsonify(get_current_gps_data())
 
-#===================================================
-@app.route('/data_latlon', methods=['POST'])
-def data_latlon():
-    """
-    Menerima data dari client dan menyimpannya.
-    """
-    global latest_data
-    data = request.get_json()
+@app.route('/api/imu-dummy', methods=['GET'])
+# =====untuk mengirim data imu==============
+# Simulate database or sensor readings
+def get_current_imu_data():
+    # In real application, this would come from actual GPS sensors or database
+    return {
+        "latitude": 51.505 + random.uniform(-0.01, 0.01),
+        "longitude": -0.09 + random.uniform(-0.01, 0.01)
+    }
 
-    if data is None:
-        return jsonify({"error": "Invalid JSON"}), 400
+def imu_data():
+    return jsonify(get_current_imu_data())
 
-    print(f"Received data: {data}")
+@app.route('/api/ekf-dummy', methods=['GET'])
+# =====untuk mengirim data imu==============
+# Simulate database or sensor readings
+def get_current_ekf_data():
+    # In real application, this would come from actual GPS sensors or database
+    return {
+        "latitude": 51.505 + random.uniform(-0.01, 0.01),
+        "longitude": -0.09 + random.uniform(-0.01, 0.01)
+    }
 
-    # Simpan data terbaru
-    latest_data = data
+def ekf_data():
+    return jsonify(get_current_ekf_data())
 
-    return jsonify({"status": "success"}), 200
-
-@app.route('/get_datalatlon', methods=['GET'])
-def get_datalatlon():
-    """
-    Mengembalikan data terbaru untuk front-end.
-    """
-    return jsonify(latest_data)
+#=======================================================
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000, debug=True)

@@ -1,0 +1,2 @@
+timestamp,gps_lat,gps_lng,imu_accel_x,imu_accel_y,imu_gyro_z,estimated_x,estimated_y,estimated_heading
+1740925933.3497715,None,None,0.015538368774413946,0.08724949689941408,-1.694335877862596,0.0,0.0,-0.006161131757583875
