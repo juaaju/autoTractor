@@ -11,7 +11,7 @@ app = Flask(__name__)
 CORS(app)
 
 # Inisialisasi komunikasi serial
-ser = serial.Serial('/dev/ttyACM0', 9600, timeout=1)  # Sesuaikan dengan port yang digunakan
+ser = serial.Serial('/dev/ttyACM1', 9600, timeout=1)  # Sesuaikan dengan port yang digunakan
 
 @app.route('/')
 def index():
@@ -19,13 +19,33 @@ def index():
 
 @app.route('/turn_right', methods=['GET'])
 def turn_right():
-    ser.write(b'cw')  # Mengirim perintah ke Arduino untuk menyalakan LED
+    ser.write(b'belok_kanan')  
     return jsonify({"status": "TURN RIGHT"})
 
 @app.route('/turn_left', methods=['GET'])
 def turn_left():
-    ser.write(b'ccw')  # Mengirim perintah ke Arduino untuk mematikan LED
+    ser.write(b'belok_kiri') 
     return jsonify({"status": "TURN LEFT"})
+
+@app.route('/cw_right', methods=['GET'])
+def cw_right():
+    ser.write(b'cw_kanan')
+    return jsonify({"status": "CW KANAN"})
+
+@app.route('/ccw_right', methods=['GET'])
+def ccw_right():
+    ser.write(b'ccw_kanan') 
+    return jsonify({"status": "CCW KANAN"})
+
+@app.route('/cw_left', methods=['GET'])
+def cw_left():
+    ser.write(b'cw_kiri')
+    return jsonify({"status": "CW KIRI"})
+
+@app.route('/ccw_left', methods=['GET'])
+def ccw_left():
+    ser.write(b'ccw_kiri')  
+    return jsonify({"status": "CCW KIRI"})
 
 @app.route('/motor_off', methods=['GET'])
 def motor_off():
@@ -91,9 +111,6 @@ def get_current_gps_data():
         "longitude": -0.09 + random.uniform(-0.01, 0.01)
     }
 
-def gps_data():
-    return jsonify(get_current_gps_data())
-
 @app.route('/api/imu-dummy', methods=['GET'])
 # =====untuk mengirim data imu==============
 # Simulate database or sensor readings
@@ -104,9 +121,6 @@ def get_current_imu_data():
         "longitude": -0.09 + random.uniform(-0.01, 0.01)
     }
 
-def imu_data():
-    return jsonify(get_current_imu_data())
-
 @app.route('/api/ekf-dummy', methods=['GET'])
 # =====untuk mengirim data imu==============
 # Simulate database or sensor readings
@@ -116,9 +130,6 @@ def get_current_ekf_data():
         "latitude": 51.505 + random.uniform(-0.01, 0.01),
         "longitude": -0.09 + random.uniform(-0.01, 0.01)
     }
-
-def ekf_data():
-    return jsonify(get_current_ekf_data())
 
 #=======================================================
 

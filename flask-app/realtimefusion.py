@@ -150,8 +150,12 @@ class RealTimeEKFSensorFusion:
     def __init__(self, dt: float):
         self.ekf = EKFSensorFusion(dt)  # Your original EKF class
         
+        # Generate log file name and store the path
+        log_filename = f"sensor_fusion_log_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+        self.log_file_path = log_filename
+        
         # Initialize logging
-        self.log_file = open(f"sensor_fusion_log_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv", "w")
+        self.log_file = open(self.log_file_path, "w")
         self.log_file.write("timestamp,gps_lat,gps_lng,imu_accel_x,imu_accel_y,imu_gyro_z,"
                            "estimated_x,estimated_y,estimated_heading\n")
 
@@ -182,6 +186,9 @@ class RealTimeEKFSensorFusion:
         self.log_file.write(f"{sensor_data.timestamp},{sensor_data.gps_lat},{sensor_data.gps_lng},"
                            f"{sensor_data.imu_accel_x},{sensor_data.imu_accel_y},{sensor_data.imu_gyro_z},"
                            f"{estimated_state[0]},{estimated_state[1]},{estimated_state[2]}\n")
+        
+        # Flush to ensure data is written to disk immediately
+        self.log_file.flush()
         
         return estimated_state
 

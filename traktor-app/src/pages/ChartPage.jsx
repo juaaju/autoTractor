@@ -1,7 +1,12 @@
 import React from "react";
 import RealtimeChart from "/home/jetson/traktor/traktor-app/src/components/RealChart.jsx";
 
-const API_URL = "http://ubuntu.local:5001/data_sensor"; // Ganti dengan IP Flask
+const API_URL = "http://ubuntu.local:5001/data_sensor_all"; // Ganti dengan IP Flask
+  // Handle log file download
+const handleDownloadCSV = () => {
+  // Assuming your sensor fusion server is running on port 5001
+  window.open('http://localhost:5001/log_file', '_blank');
+};
 
 function ChartPage() {
   return (
@@ -13,6 +18,12 @@ function ChartPage() {
       <RealtimeChart title="Data MPU_Y" dataKey="imu_y" apiUrl={API_URL} />
       <RealtimeChart title="Data GPS_LAT" dataKey="ekf_lat" apiUrl={API_URL} />
       <RealtimeChart title="Data GPS_LON" dataKey="ekf_lng" apiUrl={API_URL} />
+      <button
+        onClick={handleDownloadCSV}
+        type="button"
+        className="px-6 m-4 py-2 bg-blue-600 text-white font-semibold rounded-lg shadow-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-opacity-50">
+        Download CSV
+      </button>
     </div>
   );
 }

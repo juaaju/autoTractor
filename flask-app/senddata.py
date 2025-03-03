@@ -1,24 +1,59 @@
 from realtimefusion import DataCollector, RealTimeEKFSensorFusion
 import math
 import json
-from flask import Flask, jsonify
+from flask import Flask, jsonify, send_file
 import threading
 import time
 from flask_cors import CORS
+import os
 
 # Create Flask app
 app = Flask(__name__)
 CORS(app)
 
-# Global variable to store latest sensor data
+# Global variables to store latest sensor data and log file path
 latest_data = {}
+log_file_path = ""
 
-@app.route('/data_sensor', methods=['GET'])
+@app.route('/data_gps', methods=['GET'])
+def gps_data():
+    # Use dictionary access and provide defaults if keys don't exist
+    return jsonify({
+        "latitude": latest_data.get("gps_lat", None),
+        "longitude": latest_data.get("gps_lng", None)
+    })
+
+@app.route('/data_imu', methods=['GET'])
+def imu_data():
+    return jsonify({
+        "latitude": latest_data.get("imu_lat", None),
+        "longitude": latest_data.get("imu_lng", None)
+    })
+
+@app.route('/data_ekf', methods=['GET'])
+def ekf_data():
+    return jsonify({
+        "latitude": latest_data.get("ekf_lat", None),
+        "longitude": latest_data.get("ekf_lng", None)
+    })
+
+@app.route('/data_sensor_all', methods=['GET'])
 def get_data():
     """
     Endpoint to get the latest sensor data through a GET request.
     """
     return jsonify(latest_data)
+
+@app.route('/log_file', methods=['GET'])
+def get_log_file():
+    """
+    Endpoint to download the current sensor fusion log file.
+    """
+    global log_file_path
+    if os.path.exists(log_file_path):
+        return send_file(log_file_path, as_attachment=True)
+    else:
+        return jsonify({"error": "Log file not found"}), 404
 
 def update_latest_data(sensor_data, x_imu, y_imu, imu_lat, imu_lng, theta_imu, ekf_x, ekf_y, ekf_lat, ekf_lng):
     """
@@ -109,6 +144,10 @@ def main():
     # Initialize EKF with 250Hz update rate
     dt = 1/250.0
     fusion = RealTimeEKFSensorFusion(dt)
+    
+    # Store the log file path globally
+    global log_file_path
+    log_file_path = fusion.log_file_path
 
     # State awal untuk odometri IMU
     state = {"x": 0.0, "y": 0.0, "vx": 0.0, "vy": 0.0, "theta": 0.0}
@@ -116,11 +155,12 @@ def main():
     try:
         print("Starting sensor fusion...")
         print("Data is now accessible via GET at http://localhost:5001/data_sensor")
+        print("Log file is accessible via GET at http://localhost:5001/log_file")
         
         while True:
             # Get latest sensor data
             sensor_data = collector.get_latest_data()
-            print(sensor_data)
+            # print(sensor_data)
 
             # Proses dengan EKF
             estimated_state = fusion.process_sensor_data(sensor_data)
@@ -135,9 +175,9 @@ def main():
             ekf_lat, ekf_lon = local_to_geographic(estimated_state[0], estimated_state[1], ref_lat, ref_lon)
 
             # Print hasil EKF dan odometri IMU
-            print(f"Position EKF: ({estimated_state[0]:.2f}, {estimated_state[1]:.2f}), "
-                  f"Heading: {math.degrees(estimated_state[2]):.1f}°"
-                  f"Position GPS, gps_x: {gps_x}, gps_y: {gps_y}")
+            # print(f"Position EKF: ({estimated_state[0]:.2f}, {estimated_state[1]:.2f}), "
+            #       f"Heading: {math.degrees(estimated_state[2]):.1f}°"
+            #       f"Position GPS, gps_x: {gps_x}, gps_y: {gps_y}")
             
             #print(f"Position IMU: ({x_imu:.2f}, {y_imu:.2f}), Heading: {math.degrees(theta_imu):.1f}°")
 

@@ -13,7 +13,7 @@ function MapPage() {
     longitude: -0.09,
   });
   
-  const [ekfData, setEKFData] = useState({  // Added EKF state
+  const [ekfData, setEKFData] = useState({
     latitude: 51.505,
     longitude: -0.09,
   });
@@ -68,22 +68,28 @@ function MapPage() {
   
   const fetchIMUData = async () => {
     try {
-      const response = await fetch('http://localhost:5000/api/imu-dummy');
+      const response = await fetch('http://localhost:5001/data_imu');
       const data = await response.json();
-      setIMUData(data);  // FIXED: Now correctly updates IMU data
+      setIMUData(data);
     } catch (error) {
       console.error('Error fetching IMU data:', error);
     }
   };
   
-  const fetchEKFData = async () => {  // Added EKF data fetch
+  const fetchEKFData = async () => {
     try {
-      const response = await fetch('http://localhost:5000/api/ekf-dummy');
+      const response = await fetch('http://localhost:5001/data_ekf');
       const data = await response.json();
       setEKFData(data);
     } catch (error) {
       console.error('Error fetching EKF data:', error);
     }
+  };
+  
+  // Handle log file download
+  const handleDownloadCSV = () => {
+    // Assuming your sensor fusion server is running on port 5001
+    window.open('http://localhost:5001/log_file', '_blank');
   };
   
   useEffect(() => {
@@ -113,11 +119,17 @@ function MapPage() {
       <MapComponent
         gpsData={gpsData} 
         imuData={imuData}
-        ekfData={ekfData}  // Added EKF data prop
+        ekfData={ekfData}
         tractorPosition={tractorPosition} 
         fieldCoords={fieldCoords}
         zigzagPath={zigzagPath}
       />
+      <button
+        onClick={handleDownloadCSV}
+        type="button"
+        className="px-6 m-4 py-2 bg-blue-600 text-white font-semibold rounded-lg shadow-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-opacity-50">
+        Download CSV
+      </button>
     </div>
   );
 }
