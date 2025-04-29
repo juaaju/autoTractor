@@ -43,8 +43,9 @@ class EKFSensorFusion:
         self.dt = dt
 
         # Process noise
-        self.Q = np.diag([0.1*10, 0.1*10])  # [angular acceleration noise, linear acceleration noise]
-
+        self.Q = np.diag([0.1, 0.1])  # [angular acceleration noise, linear acceleration noise]
+        # Process noise for all state variables
+        # self.Q = np.diag([0.01, 0.01, 0.01, 0.1, 0.1, 0.1])  # [x, y, phi, omega, v, a]
         # Measurement noise
         self.R = np.diag([5.0, 5.0, 0.1, 0.1])  # [GPS_x, GPS_y, accel, gyro]
 
@@ -52,7 +53,7 @@ class EKFSensorFusion:
         """Prediction step of EKF"""
         x, y, phi, omega, v, a = self.state
         dt = self.dt
-
+        
         # Predict next state
         self.state = np.array([
             x + v * dt * math.cos(phi),
@@ -62,7 +63,12 @@ class EKFSensorFusion:
             v + a * dt,
             a      # assuming constant acceleration
         ])
-
+        
+        # Normalize heading to [0, 2π]
+        self.state[2] = self.state[2] % (2 * math.pi)
+        if self.state[2] < 0:
+            self.state[2] += 2 * math.pi
+        
         # Calculate Jacobian (phi matrix)
         phi_matrix = np.array([
             [1, 0, -math.sin(phi) * v * dt, v * dt, math.cos(phi) * dt, 0],
@@ -72,7 +78,7 @@ class EKFSensorFusion:
             [0, 0, 0, 0, 1, dt],
             [0, 0, 0, 0, 0, 1]
         ])
-
+        
         # G matrix for process noise
         G = np.array([
             [0, 0],
@@ -82,7 +88,8 @@ class EKFSensorFusion:
             [0, 0],
             [0, dt]
         ])
-
+        # G matrix becomes identity matrix when using full state noise model
+        # G = np.eye(6)
         # Predict covariance
         self.P = phi_matrix @ self.P @ phi_matrix.T + G @ self.Q @ G.T
 

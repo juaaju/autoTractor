@@ -13,6 +13,7 @@ CORS(app)
 # Inisialisasi komunikasi serial
 ser = serial.Serial('/dev/ttyACM1', 9600, timeout=1)  # Sesuaikan dengan port yang digunakan
 
+#kontrol
 @app.route('/')
 def index():
     return "Server Flask Berjalan!"

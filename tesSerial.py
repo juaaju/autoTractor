@@ -2,7 +2,7 @@ import serial
 import time
 
 # Tentukan port serial yang digunakan (ganti dengan port yang sesuai)
-port = "/dev/ttyACM1"  # Untuk Windows, bisa juga '/dev/ttyUSB0' di Linux
+port = "/dev/ttyUSB0"  # Untuk Windows, bisa juga '/dev/ttyUSB0' di Linux
 baudrate = 9600
 
 # Membuka port serial

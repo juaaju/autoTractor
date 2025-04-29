@@ -5,7 +5,7 @@ const API_URL = "http://ubuntu.local:5001/data_sensor_all"; // Ganti dengan IP F
   // Handle log file download
 const handleDownloadCSV = () => {
   // Assuming your sensor fusion server is running on port 5001
-  window.open('http://localhost:5001/log_file', '_blank');
+  window.open('http://ubuntu.local:5001/log_file', '_blank');
 };
 
 function ChartPage() {

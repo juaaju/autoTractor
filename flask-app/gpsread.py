@@ -36,19 +36,20 @@ class GPSReader:
             
             if newdata:
                 newdata = newdata.decode('ascii', errors='ignore')
+#                print(newdata)
                 
-                if newdata.startswith("$GPRMC"):
+                if newdata.startswith("$GPGGA"):
                     try:
                         newmsg = pynmea2.parse(newdata)
                         lat = newmsg.latitude
                         lng = newmsg.longitude
-                        print(f"Latitude={lat} and Longitude={lng}")
+                        # print(f"GPS data Latitude={lat} and Longitude={lng}")
                         return lat, lng
                     except pynmea2.nmea.ParseError as e:
                         print(f"Failed to parse NMEA sentence: {e}")
                         return None
                 else:
-                    print("Waiting for valid NMEA data...")
+                    # print("Waiting for valid NMEA data...")
                     return None
             else:
                 print("No data received")
