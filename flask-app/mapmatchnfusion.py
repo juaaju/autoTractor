@@ -15,7 +15,7 @@ from gpsread import GPSReader
 from map_matcher import MapMatcher, generate_path_coordinates
 
 # Definisikan konstanta sampling rate
-SAMPLING_RATE = 100  # Hz
+SAMPLING_RATE = 250  # Hz
 
 # Definisikan kelas SensorData
 @dataclass
@@ -51,7 +51,7 @@ class PathTracker:
         Returns:
             Dict: Hasil map matching atau None jika GPS tidak valid
         """
-        if gps_lat is None or gps_lng is None:
+        if gps_lat is None or gps_lng is None or (gps_lat == 0.0 and gps_lng == 0.0):
             return None
             
         # Lakukan map matching
@@ -67,6 +67,26 @@ class PathTracker:
     def get_path(self) -> List[List[float]]:
         """Mendapatkan jalur lengkap"""
         return self.path
+
+    def get_initial_heading(self):
+        """Mendapatkan orientasi awal jalur"""
+        if len(self.path) >= 2:
+            p1 = self.path[0]
+            p2 = self.path[1]
+            # Asumsikan path dalam format [lat, lng]
+            delta_lng = p2[1] - p1[1]
+            delta_lat = p2[0] - p1[0]
+            
+            # Konversi ke meter
+            lng_to_m = 110540.0 * math.cos(math.radians(p1[0]))
+            lat_to_m = 111320.0
+            
+            delta_x = delta_lng * lng_to_m
+            delta_y = delta_lat * lat_to_m
+            
+            # Hitung heading dalam radian
+            return math.atan2(delta_y, delta_x)
+        return 0.0
 
 class DataCollector:
     def __init__(self, log_to_csv=True):
@@ -90,6 +110,22 @@ class DataCollector:
         self.path_tracker = PathTracker()
         self.match_result = None  # Hasil map matching terakhir
         
+        # Tambahkan flag untuk menandai apakah EKF sudah diinisialisasi
+        self.ekf_initialized = False
+        
+        # Initialize PathTracker dan dapatkan orientasi awal
+        self.path_tracker = PathTracker()
+        initial_heading = self.path_tracker.get_initial_heading()
+        print(f"Orientasi awal jalur: {math.degrees(initial_heading):.1f}°")
+        
+        # Initialize IMU odometry dengan orientasi awal
+        self.imu_odometry = IMUOdometry(initial_heading=initial_heading)
+        self.current_position = (0.0, 0.0, initial_heading)
+        
+        # Initialize EKF dengan orientasi awal
+        self.ekf = EKFLocalization(initial_heading=initial_heading)
+        # ...kode lainnya...
+
         # Setup CSV logging
         if self.log_to_csv:
             # Buat direktori log jika belum ada
@@ -221,22 +257,30 @@ class DataCollector:
                 x, y, heading = self.imu_odometry.update(sensor_data)
                 self.current_position = (x, y, heading)
                 
-                # Update EKF dengan data odometri dan GPS
+                # Update map matching dari data GPS
+                map_matched_lat, map_matched_lng = None, None
+                if gps_lat is not None and gps_lng is not None:
+                    self.match_result = self.path_tracker.update(gps_lat, gps_lng)
+                    # Extract map-matched coordinates if available
+                    if self.match_result:
+                        map_matched_lat, map_matched_lng = self.match_result['matched_point']
+                
+                # Use map-matched coordinates for EKF if available, otherwise fall back to raw GPS
+                ekf_lat = map_matched_lat if map_matched_lat is not None else gps_lat
+                ekf_lng = map_matched_lng if map_matched_lng is not None else gps_lng
+                
+                # Update EKF dengan data odometri dan map-matched GPS
                 vx, vy = self.imu_odometry.vx, self.imu_odometry.vy
                 omega = math.radians(gyro_z_calibrated)  # dalam rad/s
                 
                 x_ekf, y_ekf, heading_ekf = self.ekf.update(
                     odometry_data=(x, y, heading, vx, vy, omega),
-                    gps_data=(gps_lat, gps_lng),
+                    gps_data=(ekf_lat, ekf_lng),  # Use map-matched coordinates for EKF
                     timestamp=current_time
                 )
                 
                 # Simpan hasil EKF
                 self.ekf_position = (x_ekf, y_ekf, heading_ekf)
-                
-                # Update map matching dari data GPS
-                if gps_lat is not None and gps_lng is not None:
-                    self.match_result = self.path_tracker.update(gps_lat, gps_lng)
                 
                 # Log ke CSV jika diperlukan
                 if self.log_to_csv:
@@ -362,12 +406,12 @@ class DataCollector:
             self.csv_file.close()
             print(f"Log data tersimpan di: {self.csv_filename}")
 
-# Kelas EKFLocalization dan IMUOdometry tetap sama seperti sebelumnya
+# Kelas EKFLocalization yang telah diperbaiki
 class EKFLocalization:
     """
     Kelas untuk fusi sensor antara odometri IMU dan GPS menggunakan Extended Kalman Filter
     """
-    def __init__(self):
+    def __init__(self,initial_heading=0.0):
         # State vector: [x, y, heading, vx, vy, omega]
         self.state = np.zeros(6)
         
@@ -395,15 +439,36 @@ class EKFLocalization:
         # Timestamp terakhir
         self.last_timestamp = None
         
+        # Tambahkan flag untuk mencegah inisialisasi dengan koordinat 0,0
+        self.is_initialized = False
+        
     def initialize_origin(self, lat, lng):
         """Inisialisasi titik asal koordinat GPS"""
+        # Hindari inisialisasi dengan koordinat nol
+        if lat == 0.0 and lng == 0.0:
+            return False
+            
         self.origin_lat = lat
         self.origin_lng = lng
+        self.is_initialized = True
+        print(f"EKF Origin diinisialisasi: Lat={lat}, Lng={lng}")
+        return True
         
     def gps_to_local(self, lat, lng) -> Tuple[float, float]:
         """Konversi koordinat GPS ke koordinat lokal dalam meter"""
-        if self.origin_lat is None or self.origin_lng is None:
-            self.initialize_origin(lat, lng)
+        # Jika tidak ada koordinat GPS, return nilai default
+        if lat is None or lng is None:
+            return 0.0, 0.0
+            
+        # Jika belum diinisialisasi dan data GPS valid
+        if not self.is_initialized:
+            # Hindari inisialisasi dengan koordinat nol
+            if lat != 0.0 or lng != 0.0:
+                self.initialize_origin(lat, lng)
+                return 0.0, 0.0
+        
+        # Jika belum ada origin yang valid, return nilai default
+        if not self.is_initialized:
             return 0.0, 0.0
             
         # Konversi delta koordinat ke meter
@@ -462,7 +527,7 @@ class EKFLocalization:
             gps_lat: Latitude dari GPS
             gps_lng: Longitude dari GPS
         """
-        if gps_lat is None or gps_lng is None:
+        if gps_lat is None or gps_lng is None or (gps_lat == 0.0 and gps_lng == 0.0):
             return
         
         # Konversi GPS ke koordinat lokal
@@ -501,6 +566,9 @@ class EKFLocalization:
         Returns:
             Tuple[float, float, float]: Estimasi posisi x, y, dan heading
         """
+        # Periksa apakah data GPS valid untuk inisialisasi
+        gps_lat, gps_lng = gps_data if gps_data is not None else (None, None)
+        
         # Pada update pertama, inisialisasi
         if self.last_timestamp is None:
             self.last_timestamp = timestamp
@@ -511,9 +579,9 @@ class EKFLocalization:
                 self.state[1] = odometry_data[1]  # y
                 self.state[2] = odometry_data[2]  # heading
                 
-            # Inisialisasi origin GPS jika ada data GPS
-            if gps_data is not None and gps_data[0] is not None:
-                self.initialize_origin(gps_data[0], gps_data[1])
+            # Inisialisasi origin GPS jika ada data GPS yang valid
+            if gps_lat is not None and gps_lng is not None and (gps_lat != 0.0 or gps_lng != 0.0):
+                self.initialize_origin(gps_lat, gps_lng)
                 
             return self.state[0], self.state[1], self.state[2]
         
@@ -531,20 +599,24 @@ class EKFLocalization:
         # Langkah prediksi
         self.predict(imu_data_struct, dt)
         
-        # Langkah koreksi dengan GPS (jika tersedia)
-        if gps_data is not None and gps_data[0] is not None:
-            self.correct_with_gps(gps_data[0], gps_data[1])
+        # Langkah koreksi dengan GPS (jika tersedia dan valid)
+        if gps_lat is not None and gps_lng is not None and (gps_lat != 0.0 or gps_lng != 0.0):
+            # Jika belum terinisialisasi, coba inisialisasi dengan data GPS yang valid
+            if not self.is_initialized:
+                self.initialize_origin(gps_lat, gps_lng)
+            else:
+                self.correct_with_gps(gps_lat, gps_lng)
         
         # Kembalikan estimasi posisi dan orientasi terkini
         return self.state[0], self.state[1], self.state[2]
 
 # Kelas untuk odometry IMU
 class IMUOdometry:
-    def __init__(self):
+    def __init__(self, initial_heading=0.0):
         # Posisi awal (0,0) dan heading awal 0 derajat (menghadap ke sumbu x positif)
         self.x = 0.0
         self.y = 0.0
-        self.heading = 0.0  # dalam radian
+        self.heading = initial_heading  # Gunakan orientasi awal dari 
         
         # Kecepatan
         self.vx = 0.0

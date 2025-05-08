@@ -507,7 +507,7 @@ if __name__ == "__main__":
     mpu = mpu9250(0x68)
     
     # Optional: Uncomment to run magnetometer calibration once
-    cal = mpu.calibrate_magnetometer()
+    # cal = mpu.calibrate_magnetometer()
     
     # Initialize variables for tracking raw heading
     dt = 0.2  # Matching your sleep time
