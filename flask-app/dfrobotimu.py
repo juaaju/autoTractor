@@ -26,9 +26,75 @@ class IMU_WT61PCTTL:
         self.ser = None
         self.connected = False
         
+        # Bias default (nol)
+        self.accel_bias = {'x': 0, 'y': 0, 'z': 0}
+        self.gyro_bias = {'x': 0, 'y': 0, 'z': 0}
+        
         # Connect saat inisialisasi
         self.connect()
     
+    def calibrate_bias(self, samples=100, delay=0.01):
+        if not self.connected:
+            if not self.connect():
+                return None
+        
+        print(f"Kalibrasi bias IMU sedang berjalan.")
+        
+        # Akumulator
+        accel_x_sum = 0
+        accel_y_sum = 0
+        accel_z_sum = 0
+        gyro_x_sum = 0
+        gyro_y_sum = 0
+        gyro_z_sum = 0
+        
+        # Sampel yang valid
+        valid_samples = 0
+        
+        for _ in range(samples):
+            data = self.get_all_data()
+            if data:
+                accel_x_sum += data['accel']['x']
+                accel_y_sum += data['accel']['y']
+                accel_z_sum += data['accel']['z'] - 1.0  # Kurangi 1g untuk kompensasi gravitasi
+                gyro_x_sum += data['gyro']['x']
+                gyro_y_sum += data['gyro']['y']
+                gyro_z_sum += data['gyro']['z']
+                valid_samples += 1
+            time.sleep(delay)
+        
+        if valid_samples > 0:
+            # Hitung rata-rata sebagai bias
+            self.accel_bias = {
+                'x': accel_x_sum / valid_samples,
+                'y': accel_y_sum / valid_samples,
+                'z': accel_z_sum / valid_samples
+            }
+                # Simpan juga dalam unit m/s²
+            self.accel_bias_ms2 = {
+                'x': self.accel_bias['x'] * 9.81,
+                'y': self.accel_bias['y'] * 9.81,
+                'z': self.accel_bias['z'] * 9.81
+            }
+            
+            self.gyro_bias = {
+                'x': gyro_x_sum / valid_samples,
+                'y': gyro_y_sum / valid_samples,
+                'z': gyro_z_sum / valid_samples
+            }
+            
+            print(f"Kalibrasi selesai dengan {valid_samples} sampel valid")
+            print(f"Bias akselerometer: x={self.accel_bias['x']:.6f}g, y={self.accel_bias['y']:.6f}g, z={self.accel_bias['z']:.6f}g")
+            print(f"Bias giroskop: x={self.gyro_bias['x']:.6f}°/s, y={self.gyro_bias['y']:.6f}°/s, z={self.gyro_bias['z']:.6f}°/s")
+            
+            return {
+                'accel': self.accel_bias,
+                'gyro': self.gyro_bias
+            }
+        else:
+            print("Kalibrasi gagal: tidak ada data valid")
+            return None
+
     def connect(self):
         """Membuka koneksi serial"""
         try:
@@ -54,15 +120,6 @@ class IMU_WT61PCTTL:
             self.connected = False
     
     def get_all_data(self, unit='g'):
-        """
-        Membaca dan mengembalikan data dari IMU
-        
-        Args:
-            unit (str): Satuan untuk akselerasi: 'g' atau 'm/s2'
-        
-        Returns:
-            dict: Dictionary berisi data akselerometer, giroskop, dan suhu
-        """
         if not self.connected:
             if not self.connect():
                 return None
@@ -128,12 +185,22 @@ class IMU_WT61PCTTL:
                 data_complete = True
                 break
         
-        # Konversi unit akselerasi jika diminta
+        # Koreksi bias
+        gyro_data['x'] -= self.gyro_bias['x']
+        gyro_data['y'] -= self.gyro_bias['y']
+        gyro_data['z'] -= self.gyro_bias['z']
+        # Koreksi bias dengan unit yang sesuai
         if unit.lower() == 'm/s2':
-            accel_data['x'] = accel_data['x'] * 9.81
-            accel_data['y'] = accel_data['y'] * 9.81
-            accel_data['z'] = accel_data['z'] * 9.81
-        
+            # Konversi unit akselerasi ke m/s²
+            accel_data['x'] = accel_data['x'] * 9.81 - self.accel_bias_ms2['x']
+            accel_data['y'] = accel_data['y'] * 9.81 - self.accel_bias_ms2['y']
+            accel_data['z'] = accel_data['z'] * 9.81 - self.accel_bias_ms2['z']
+        else:
+            # Bias dalam unit g
+            accel_data['x'] -= self.accel_bias['x']
+            accel_data['y'] -= self.accel_bias['y']
+            accel_data['z'] -= self.accel_bias['z']
+
         # Gabungkan semua data
         result = {
             'accel': accel_data,
