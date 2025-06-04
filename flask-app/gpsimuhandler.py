@@ -115,7 +115,7 @@ class GPSHandler:
 
 class IMUHandler:
     def __init__(self, i2c=0x68):
-        self.imu = mpu9250(i2c)
+        self.imu = mpu6050(i2c)
         self.imu.calibrate()
         self.accel = 0
         self.gyro = 0

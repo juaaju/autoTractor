@@ -9,7 +9,7 @@ def read_save6050():
     mpu = mpu6050(0x68)
     
     # Simple calibration - just call this once
-    mpu.calibrate()
+#    mpu.calibrate()
     
     # Create CSV file with timestamp
     filename = f"mpu6050_data_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
