@@ -70,7 +70,7 @@ class GPSReader:
             print("GPS connection closed")
 
 if __name__ == "__main__":
-    gps = GPSReader(port="/dev/ttyUSB1")
+    gps = GPSReader(port="/dev/ttyUSB0")
     try:
         while True:
             coords = gps.read()

@@ -3,6 +3,8 @@ between a Jetson Nano and a MPU-6050 Gyroscope / Accelerometer combo.
 Made by: Dennis/TW
 Released under the MIT License
 Copyright 2019
+
+Modified with simple bias calibration.
 """
  
 import smbus
@@ -68,10 +70,47 @@ class mpu6050:
  
     def __init__(self, address):
         self.address = address
+        
+        # Initialize bias values
+        self.accel_bias = {'x': 0, 'y': 0, 'z': 0}
+        self.gyro_bias = {'x': 0, 'y': 0, 'z': 0}
  
         # Wake up the MPU-6050 since it starts in sleep mode
         self.bus.write_byte_data(self.address, self.PWR_MGMT_1, 0x00)
- 
+
+    def calibrate(self):
+        """Simple calibration - call this once when sensor is still."""
+        print("Calibrating... Keep sensor still for 2 seconds")
+        
+        accel_sum = {'x': 0, 'y': 0, 'z': 0}
+        gyro_sum = {'x': 0, 'y': 0, 'z': 0}
+        
+        # Take 200 samples
+        for i in range(200):
+            accel = self.get_accel_data()
+            gyro = self.get_gyro_data()
+            
+            accel_sum['x'] += accel['x']
+            accel_sum['y'] += accel['y']
+            accel_sum['z'] += accel['z']
+            
+            gyro_sum['x'] += gyro['x']
+            gyro_sum['y'] += gyro['y']
+            gyro_sum['z'] += gyro['z']
+            
+            sleep(0.01)
+        
+        # Calculate bias (average)
+        self.accel_bias['x'] = accel_sum['x'] / 200
+        self.accel_bias['y'] = accel_sum['y'] / 200
+        self.accel_bias['z'] = (accel_sum['z'] / 200) - self.GRAVITIY_MS2  # Z should be 9.8 m/s²
+        
+        self.gyro_bias['x'] = gyro_sum['x'] / 200
+        self.gyro_bias['y'] = gyro_sum['y'] / 200
+        self.gyro_bias['z'] = gyro_sum['z'] / 200
+        
+        print("Calibration done!")
+
     # I2C communication methods
  
     def read_i2c_word(self, register):
@@ -177,11 +216,19 @@ class mpu6050:
         z = z / accel_scale_modifier
  
         if g is True:
+            # Apply bias correction in g units
+            x = x - (self.accel_bias['x'] / self.GRAVITIY_MS2)
+            y = y - (self.accel_bias['y'] / self.GRAVITIY_MS2)
+            z = z - (self.accel_bias['z'] / self.GRAVITIY_MS2)
             return {'x': x, 'y': y, 'z': z}
         elif g is False:
             x = x * self.GRAVITIY_MS2
             y = y * self.GRAVITIY_MS2
             z = z * self.GRAVITIY_MS2
+            # Apply bias correction in m/s² units
+            x = x - self.accel_bias['x']
+            y = y - self.accel_bias['y']
+            z = z - self.accel_bias['z']
             return {'x': x, 'y': y, 'z': z}
  
     def set_gyro_range(self, gyro_range):
@@ -249,6 +296,11 @@ class mpu6050:
         x = x / gyro_scale_modifier
         y = y / gyro_scale_modifier
         z = z / gyro_scale_modifier
+        
+        # Apply bias correction
+        x = x - self.gyro_bias['x']
+        y = y - self.gyro_bias['y']
+        z = z - self.gyro_bias['z']
  
         return {'x': x, 'y': y, 'z': z}
  
@@ -262,10 +314,15 @@ class mpu6050:
             'accel': accel,
             'gyro': gyro,
             'temp': temp,
-        } 
+        }
+
 if __name__ == "__main__":
+    mpu = mpu6050(0x68)
+    
+    # Simple calibration - just call this once
+    mpu.calibrate()
+    
     while(1):
-        mpu = mpu6050(0x68)
         print("Temperature (C): ", mpu.get_temp())
         accel_data = mpu.get_accel_data()
         print("Acceleration x (m/s^2): ", accel_data['x'])

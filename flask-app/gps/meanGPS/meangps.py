@@ -8,7 +8,7 @@ import copy
 import pymap3d as pm
 
 # Konfigurasi
-GPS_PORTS = ["/dev/ttyUSB0", "/dev/ttyACM0"]
+GPS_PORTS = ["/dev/ttyUSB0", "/dev/ttyACM0", "/dev/ttyUSB1"]
 LAT_REF = -7.283640
 LNG_REF = 112.796467
 GPS_DATA_FILE = 'data_gps.csv'

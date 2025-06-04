@@ -26,8 +26,7 @@ class mpu9250:
     GYRO_SCALE_MODIFIER_1000DEG = 32.8
     GYRO_SCALE_MODIFIER_2000DEG = 16.4
     
-    # Magnetometer Scale Modifiers (resolution is 0.15 μT/LSB)
-    # Full scale is +/-4800 μT
+    # Magnetometer Scale Modifier (resolution is 0.15 μT/LSB)
     MAGNETOMETER_SCALE_MODIFIER = 0.15
 
     # Pre-defined ranges
@@ -87,80 +86,136 @@ class mpu9250:
     INT_PIN_CFG = 0x37
     INT_ENABLE = 0x38
 
-    # Magnetometer calibration values
-    mag_offset_x = 0
-    mag_offset_y = 0
-    mag_offset_z = 0
-    mag_scale_x = 1.0
-    mag_scale_y = 1.0
-    mag_scale_z = 1.0
-
     def __init__(self, address):
         self.address = address
+        
+        # Initialize bias values
+        self.accel_bias = {'x': 0, 'y': 0, 'z': 0}
+        self.gyro_bias = {'x': 0, 'y': 0, 'z': 0}
+        
+        # Initialize magnetometer calibration values
+        self.mag_offset_x = 0
+        self.mag_offset_y = 0
+        self.mag_offset_z = 0
+        self.mag_scale_x = 1.0
+        self.mag_scale_y = 1.0
+        self.mag_scale_z = 1.0
+        self.mag_sensitivity_x = 1.0
+        self.mag_sensitivity_y = 1.0
+        self.mag_sensitivity_z = 1.0
  
         # Wake up the MPU-9250 since it starts in sleep mode
         self.bus.write_byte_data(self.address, self.PWR_MGMT_1, 0x00)
+        sleep(0.1)
         
         # Enable I2C bypass to access magnetometer
         self.enable_magnetometer()
         
-        # Set up magnetometer in continuous measurement mode 2 (100Hz)
+        # Set up magnetometer in continuous measurement mode
         self.configure_magnetometer()
         
         # Load factory magnetometer calibration values
         self.load_magnetometer_calibration()
 
+    def calibrate(self):
+        """Simple calibration - call this once when sensor is still."""
+        print("Calibrating... Keep sensor still for 2 seconds")
+        
+        accel_sum = {'x': 0, 'y': 0, 'z': 0}
+        gyro_sum = {'x': 0, 'y': 0, 'z': 0}
+        
+        # Take 200 samples
+        for i in range(200):
+            accel = self.get_accel_data()
+            gyro = self.get_gyro_data()
+            
+            accel_sum['x'] += accel['x']
+            accel_sum['y'] += accel['y']
+            accel_sum['z'] += accel['z']
+            
+            gyro_sum['x'] += gyro['x']
+            gyro_sum['y'] += gyro['y']
+            gyro_sum['z'] += gyro['z']
+            
+            sleep(0.01)
+        
+        # Calculate bias (average)
+        self.accel_bias['x'] = accel_sum['x'] / 200
+        self.accel_bias['y'] = accel_sum['y'] / 200
+        self.accel_bias['z'] = (accel_sum['z'] / 200) - self.GRAVITIY_MS2  # Z should be 9.8 m/s²
+        
+        self.gyro_bias['x'] = gyro_sum['x'] / 200
+        self.gyro_bias['y'] = gyro_sum['y'] / 200
+        self.gyro_bias['z'] = gyro_sum['z'] / 200
+        
+        print("Calibration done!")
+
     def enable_magnetometer(self):
         """Enable I2C bypass to access the magnetometer."""
-        self.bus.write_byte_data(self.address, self.INT_PIN_CFG, 0x02)  # Enable I2C bypass
-        self.bus.write_byte_data(self.address, self.INT_ENABLE, 0x01)   # Enable raw data ready interrupt
+        try:
+            self.bus.write_byte_data(self.address, self.INT_PIN_CFG, 0x02)  # Enable I2C bypass
+            sleep(0.01)
+            self.bus.write_byte_data(self.address, self.INT_ENABLE, 0x01)   # Enable raw data ready interrupt
+            sleep(0.01)
+            print("Magnetometer bypass enabled")
+        except Exception as e:
+            print(f"Error enabling magnetometer: {e}")
 
     def configure_magnetometer(self):
         """Configure the AK8963 magnetometer."""
-        # Set magnetometer to power down mode
-        self.bus.write_byte_data(self.AK8963_ADDRESS, self.AK8963_CNTL, 0x00)
-        sleep(0.01)
-        
-        # Set to Fuse ROM access mode to read sensitivity adjustment values
-        self.bus.write_byte_data(self.AK8963_ADDRESS, self.AK8963_CNTL, 0x0F)
-        sleep(0.01)
-        
-        # Set to continuous measurement mode 2 (100Hz) with 16-bit output
-        self.bus.write_byte_data(self.AK8963_ADDRESS, self.AK8963_CNTL, 0x16)
-        sleep(0.01)
+        try:
+            # Check if magnetometer is accessible
+            who_am_i = self.bus.read_byte_data(self.AK8963_ADDRESS, self.AK8963_WHO_AM_I)
+            if who_am_i != 0x48:
+                print(f"Warning: Magnetometer not detected (WHO_AM_I: 0x{who_am_i:02X})")
+                return False
+            
+            # Set magnetometer to power down mode
+            self.bus.write_byte_data(self.AK8963_ADDRESS, self.AK8963_CNTL, 0x00)
+            sleep(0.01)
+            
+            # Set to continuous measurement mode 2 (100Hz) with 16-bit output
+            self.bus.write_byte_data(self.AK8963_ADDRESS, self.AK8963_CNTL, 0x16)
+            sleep(0.01)
+            
+            print("Magnetometer configured successfully")
+            return True
+        except Exception as e:
+            print(f"Error configuring magnetometer: {e}")
+            return False
 
     def load_magnetometer_calibration(self):
         """Load factory calibration values for magnetometer sensitivity."""
-        # Read Fuse ROM sensitivity adjustment values
-        self.bus.write_byte_data(self.AK8963_ADDRESS, self.AK8963_CNTL, 0x00)  # Power down
-        sleep(0.01)
-        self.bus.write_byte_data(self.AK8963_ADDRESS, self.AK8963_CNTL, 0x0F)  # Fuse ROM access
-        sleep(0.01)
-        
-        # Read calibration values
-        asax = self.bus.read_byte_data(self.AK8963_ADDRESS, self.AK8963_ASAX)
-        asay = self.bus.read_byte_data(self.AK8963_ADDRESS, self.AK8963_ASAY)
-        asaz = self.bus.read_byte_data(self.AK8963_ADDRESS, self.AK8963_ASAZ)
-        
-        # Convert to adjustment factors
-        self.mag_scale_x = ((asax - 128) / 256.0) + 1.0
-        self.mag_scale_y = ((asay - 128) / 256.0) + 1.0
-        self.mag_scale_z = ((asaz - 128) / 256.0) + 1.0
-        
-        # Return to continuous measurement mode
-        self.bus.write_byte_data(self.AK8963_ADDRESS, self.AK8963_CNTL, 0x00)  # Power down
-        sleep(0.01)
-        self.bus.write_byte_data(self.AK8963_ADDRESS, self.AK8963_CNTL, 0x16)  # Continuous measurement mode 2 (100Hz)
-        sleep(0.01)
-
-    def set_magnetometer_calibration(self, offset_x, offset_y, offset_z, scale_x=1.0, scale_y=1.0, scale_z=1.0):
-        """Set calibration values for hard iron and soft iron corrections."""
-        self.mag_offset_x = offset_x
-        self.mag_offset_y = offset_y
-        self.mag_offset_z = offset_z
-        self.mag_scale_x = scale_x
-        self.mag_scale_y = scale_y
-        self.mag_scale_z = scale_z
+        try:
+            # Set to Fuse ROM access mode to read sensitivity adjustment values
+            self.bus.write_byte_data(self.AK8963_ADDRESS, self.AK8963_CNTL, 0x00)  # Power down
+            sleep(0.01)
+            self.bus.write_byte_data(self.AK8963_ADDRESS, self.AK8963_CNTL, 0x0F)  # Fuse ROM access
+            sleep(0.01)
+            
+            # Read calibration values
+            asax = self.bus.read_byte_data(self.AK8963_ADDRESS, self.AK8963_ASAX)
+            asay = self.bus.read_byte_data(self.AK8963_ADDRESS, self.AK8963_ASAY)
+            asaz = self.bus.read_byte_data(self.AK8963_ADDRESS, self.AK8963_ASAZ)
+            
+            # Convert to adjustment factors
+            self.mag_sensitivity_x = ((asax - 128) / 256.0) + 1.0
+            self.mag_sensitivity_y = ((asay - 128) / 256.0) + 1.0
+            self.mag_sensitivity_z = ((asaz - 128) / 256.0) + 1.0
+            
+            # Return to continuous measurement mode
+            self.bus.write_byte_data(self.AK8963_ADDRESS, self.AK8963_CNTL, 0x00)  # Power down
+            sleep(0.01)
+            self.bus.write_byte_data(self.AK8963_ADDRESS, self.AK8963_CNTL, 0x16)  # Continuous measurement mode 2
+            sleep(0.01)
+            
+            print(f"Magnetometer sensitivity: X={self.mag_sensitivity_x:.3f}, Y={self.mag_sensitivity_y:.3f}, Z={self.mag_sensitivity_z:.3f}")
+        except Exception as e:
+            print(f"Error loading magnetometer calibration: {e}")
+            # Set default values
+            self.mag_sensitivity_x = 1.0
+            self.mag_sensitivity_y = 1.0
+            self.mag_sensitivity_z = 1.0
 
     # I2C communication methods 
     def read_i2c_word(self, register):
@@ -182,7 +237,7 @@ class mpu9250:
             
     def read_magnetometer_word(self, register):
         """Read two registers from magnetometer and combine them."""
-        # Read the data from the registers (low byte first)
+        # Read the data from the registers (low byte first for magnetometer)
         low = self.bus.read_byte_data(self.AK8963_ADDRESS, register)
         high = self.bus.read_byte_data(self.AK8963_ADDRESS, register + 1)
         
@@ -202,8 +257,7 @@ class mpu9250:
         # Get the raw data
         raw_temp = self.read_i2c_word(self.TEMP_OUT0)
  
-        # Get the actual temperature using the formule given in the
-        # MPU-9250 Register Map and Descriptions
+        # Get the actual temperature using the formula for MPU-9250
         actual_temp = (raw_temp / 333.87) + 21.0
  
         # Return the temperature
@@ -278,11 +332,19 @@ class mpu9250:
         z = z / accel_scale_modifier
  
         if g is True:
+            # Apply bias correction in g units
+            x = x - (self.accel_bias['x'] / self.GRAVITIY_MS2)
+            y = y - (self.accel_bias['y'] / self.GRAVITIY_MS2)
+            z = z - (self.accel_bias['z'] / self.GRAVITIY_MS2)
             return {'x': x, 'y': y, 'z': z}
         elif g is False:
             x = x * self.GRAVITIY_MS2
             y = y * self.GRAVITIY_MS2
             z = z * self.GRAVITIY_MS2
+            # Apply bias correction in m/s² units
+            x = x - self.accel_bias['x']
+            y = y - self.accel_bias['y']
+            z = z - self.accel_bias['z']
             return {'x': x, 'y': y, 'z': z}
  
     def set_gyro_range(self, gyro_range):
@@ -294,7 +356,7 @@ class mpu9250:
         # First change it to 0x00 to make sure we write the correct value later
         self.bus.write_byte_data(self.address, self.GYRO_CONFIG, 0x00)
  
-        # Write the new range to the ACCEL_CONFIG register
+        # Write the new range to the GYRO_CONFIG register
         self.bus.write_byte_data(self.address, self.GYRO_CONFIG, gyro_range)
  
     def read_gyro_range(self, raw = False):
@@ -350,6 +412,11 @@ class mpu9250:
         x = x / gyro_scale_modifier
         y = y / gyro_scale_modifier
         z = z / gyro_scale_modifier
+        
+        # Apply bias correction
+        x = x - self.gyro_bias['x']
+        y = y - self.gyro_bias['y']
+        z = z - self.gyro_bias['z']
  
         return {'x': x, 'y': y, 'z': z}
     
@@ -359,38 +426,42 @@ class mpu9250:
         If apply_calibration is True, it will apply the calibration values
         Returns the read values in a dictionary in μT.
         """
-        # Check if data is ready
-        status = self.bus.read_byte_data(self.AK8963_ADDRESS, self.AK8963_ST1)
-        if not (status & 0x01):
-            return None  # Data not ready
-        
-        # Read the raw data from the magnetometer
-        x = self.read_magnetometer_word(self.AK8963_XOUT_L)
-        y = self.read_magnetometer_word(self.AK8963_YOUT_L)
-        z = self.read_magnetometer_word(self.AK8963_ZOUT_L)
-        
-        # Check for overflow
-        status2 = self.bus.read_byte_data(self.AK8963_ADDRESS, self.AK8963_ST2)
-        if status2 & 0x08:
-            return None  # Overflow detected
+        try:
+            # Check if data is ready
+            status = self.bus.read_byte_data(self.AK8963_ADDRESS, self.AK8963_ST1)
+            if not (status & 0x01):
+                return None  # Data not ready
             
-        # Apply factory sensitivity adjustments
-        x = x * self.mag_scale_x
-        y = y * self.mag_scale_y
-        z = z * self.mag_scale_z
-        
-        # Apply calibration (hard iron and soft iron corrections)
-        if apply_calibration:
-            x = (x - self.mag_offset_x) * self.mag_scale_x
-            y = (y - self.mag_offset_y) * self.mag_scale_y
-            z = (z - self.mag_offset_z) * self.mag_scale_z
-        
-        # Convert to microteslas
-        x = x * self.MAGNETOMETER_SCALE_MODIFIER
-        y = y * self.MAGNETOMETER_SCALE_MODIFIER
-        z = z * self.MAGNETOMETER_SCALE_MODIFIER
-        
-        return {'x': x, 'y': y, 'z': z}
+            # Read the raw data from the magnetometer
+            x = self.read_magnetometer_word(self.AK8963_XOUT_L)
+            y = self.read_magnetometer_word(self.AK8963_YOUT_L)
+            z = self.read_magnetometer_word(self.AK8963_ZOUT_L)
+            
+            # Check for overflow
+            status2 = self.bus.read_byte_data(self.AK8963_ADDRESS, self.AK8963_ST2)
+            if status2 & 0x08:
+                return None  # Overflow detected
+                
+            # Apply factory sensitivity adjustments
+            x = x * self.mag_sensitivity_x
+            y = y * self.mag_sensitivity_y
+            z = z * self.mag_sensitivity_z
+            
+            # Convert to microteslas
+            x = x * self.MAGNETOMETER_SCALE_MODIFIER
+            y = y * self.MAGNETOMETER_SCALE_MODIFIER
+            z = z * self.MAGNETOMETER_SCALE_MODIFIER
+            
+            # Apply calibration (hard iron and soft iron corrections)
+            if apply_calibration:
+                x = (x - self.mag_offset_x) * self.mag_scale_x
+                y = (y - self.mag_offset_y) * self.mag_scale_y
+                z = (z - self.mag_offset_z) * self.mag_scale_z
+            
+            return {'x': x, 'y': y, 'z': z}
+        except Exception as e:
+            print(f"Error reading magnetometer: {e}")
+            return None
     
     def get_compass_heading(self):
         """Calculate heading based on magnetometer data.
@@ -402,7 +473,6 @@ class mpu9250:
             return None
             
         # Calculate heading
-        # Note: Different orientations might require different axes
         x = mag_data['x']
         y = mag_data['y']
         
@@ -411,7 +481,6 @@ class mpu9250:
         
         # Correct for declination (difference between magnetic north and true north)
         # Replace this value with the declination for your location
-        # You can find it at: https://www.ngdc.noaa.gov/geomag/calculators/magcalc.shtml
         declination = 0  # Replace with your local declination in radians
         heading += declination
         
@@ -421,71 +490,6 @@ class mpu9250:
             heading_deg += 360
             
         return heading_deg
-        
-    def calibrate_magnetometer(self, samples=500, delay=0.05):
-        """Calibrate magnetometer for hard iron offset.
-        
-        This should be done by rotating the sensor in all directions.
-        """
-        print("Magnetometer calibration started...")
-        print("Rotate the sensor slowly in all directions.")
-        
-        # Store min/max values
-        min_x = max_x = min_y = max_y = min_z = max_z = 0
-        
-        # Take samples
-        for _ in range(samples):
-            mag_data = self.get_mag_data(apply_calibration=False)
-            if mag_data is not None:
-                if _ == 0:  # First reading
-                    min_x = max_x = mag_data['x']
-                    min_y = max_y = mag_data['y']
-                    min_z = max_z = mag_data['z']
-                else:
-                    min_x = min(min_x, mag_data['x'])
-                    max_x = max(max_x, mag_data['x'])
-                    min_y = min(min_y, mag_data['y'])
-                    max_y = max(max_y, mag_data['y'])
-                    min_z = min(min_z, mag_data['z'])
-                    max_z = max(max_z, mag_data['z'])
-                    
-            sleep(delay)
-            
-            # Show progress
-            if _ % 50 == 0:
-                print(f"Progress: {_ / samples * 100:.1f}%")
-                
-        # Calculate hard iron offsets (center of min-max range)
-        offset_x = (min_x + max_x) / 2
-        offset_y = (min_y + max_y) / 2
-        offset_z = (min_z + max_z) / 2
-        
-        # Calculate soft iron corrections (assumes sphere)
-        avg_delta_x = (max_x - min_x) / 2
-        avg_delta_y = (max_y - min_y) / 2
-        avg_delta_z = (max_z - min_z) / 2
-        
-        avg_delta = (avg_delta_x + avg_delta_y + avg_delta_z) / 3
-        
-        scale_x = avg_delta / avg_delta_x if avg_delta_x != 0 else 1
-        scale_y = avg_delta / avg_delta_y if avg_delta_y != 0 else 1
-        scale_z = avg_delta / avg_delta_z if avg_delta_z != 0 else 1
-        
-        # Update calibration values
-        self.set_magnetometer_calibration(offset_x, offset_y, offset_z, scale_x, scale_y, scale_z)
-        
-        print("\nCalibration complete!")
-        print(f"Hard Iron Offset: X: {offset_x:.2f}, Y: {offset_y:.2f}, Z: {offset_z:.2f}")
-        print(f"Soft Iron Scale: X: {scale_x:.2f}, Y: {scale_y:.2f}, Z: {scale_z:.2f}")
-        
-        return {
-            'offset_x': offset_x,
-            'offset_y': offset_y,
-            'offset_z': offset_z,
-            'scale_x': scale_x,
-            'scale_y': scale_y,
-            'scale_z': scale_z
-        }
  
     def get_all_data(self):
         """Reads and returns all the available data."""
@@ -505,13 +509,7 @@ class mpu9250:
  
 if __name__ == "__main__":
     mpu = mpu9250(0x68)
-    
-    # Optional: Uncomment to run magnetometer calibration once
-    # cal = mpu.calibrate_magnetometer()
-    
-    # Initialize variables for tracking raw heading
-    dt = 0.2  # Matching your sleep time
-    raw_heading = 0.0  # Initial heading in radians
+    mpu.calibrate()
     
     while(1):
         try:
@@ -527,19 +525,6 @@ if __name__ == "__main__":
             print("Gyroscope y (deg/s): ", data['gyro']['y'])
             print("Gyroscope z (deg/s): ", data['gyro']['z'])
             
-            # Update raw heading by integrating gyro z
-            # Converting from deg/s to rad/s for integration
-            gyro_z_rad = math.radians(data['gyro']['z'])
-            raw_heading += gyro_z_rad * dt
-            
-            # Normalize heading to [0, 2π]
-            raw_heading = raw_heading % (2 * math.pi)
-            if raw_heading < 0:
-                raw_heading += 2 * math.pi
-                
-            print("Raw Heading (rad): ", raw_heading)
-            print("Raw Heading (deg): ", math.degrees(raw_heading))
-            
             if data['mag'] is not None:
                 print("Magnetometer x (µT): ", data['mag']['x'])
                 print("Magnetometer y (µT): ", data['mag']['y'])
@@ -547,14 +532,13 @@ if __name__ == "__main__":
                 
             if data['heading'] is not None:
                 print("Compass Heading: ", data['heading'], "° from North")
-                print("Compass vs. Gyro Difference: ", data['heading'] - math.degrees(raw_heading), "°")
                 
             print("----------------------------------------")
-            sleep(dt)
+            sleep(0.2)
             
         except KeyboardInterrupt:
             print("\nProgram terminated by user")
             break
         except Exception as e:
             print(f"Error: {e}")
-            sleep(0.5)  # Wait a bit before trying again
+            sleep(0.5)

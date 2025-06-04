@@ -5,16 +5,16 @@ import csv
 from datetime import datetime
 from threading import Thread, Lock
 from queue import Queue
+import collections
+from scipy import signal  # TAMBAHAN YANG HILANG!
 from gpsread import GPSReader
 from dfrobotimu import IMU_WT61PCTTL
 import pymap3d as pm
 from ekfnparam3 import EKFSensorFusion  # Import EKF Anda
 from mpu9250read import mpu9250
 from mpu6050read import mpu6050
-import collections
-from scipy import signal
 
-# GPSHandler dan IMUHandler sama seperti kode Anda, tapi dengan perbaikan kecil
+# GPSHandler - DIPERBAIKI: Better error handling dan validation
 class GPSHandler:
     def __init__(self, port="/dev/ttyUSB0"):
         self.reader = GPSReader(port)
@@ -32,6 +32,8 @@ class GPSHandler:
     
     def update_loop(self):
         consecutive_errors = 0
+        max_consecutive_errors = 10  # TAMBAHAN: Limit consecutive errors
+        
         while self.running:
             try:
                 time.sleep(0.1)  # 10Hz GPS
@@ -50,8 +52,8 @@ class GPSHandler:
                     
                     if self.validate_coordinates(new_coords):
                         with self.lock:
+                            self.prev_coords = self.latest_coords  # PERBAIKAN: Update prev sebelum latest
                             self.latest_coords = new_coords
-                            self.prev_coords = self.latest_coords
                             self.read_count += 1
                             self.last_read_time = current_time
                         consecutive_errors = 0
@@ -59,15 +61,29 @@ class GPSHandler:
                         consecutive_errors += 1
                         self.error_count += 1
                         
+                        # TAMBAHAN: Reset jika terlalu banyak error berturut-turut
+                        if consecutive_errors >= max_consecutive_errors:
+                            print(f"GPS: Too many consecutive errors ({consecutive_errors}), resetting...")
+                            time.sleep(1)
+                            consecutive_errors = 0
+                        
             except Exception as e:
                 self.error_count += 1
+                consecutive_errors += 1
                 print(f"GPS Exception: {e}")
-                time.sleep(0.5)
+                
+                if consecutive_errors >= max_consecutive_errors:
+                    print("GPS: Critical error, sleeping longer...")
+                    time.sleep(2)
+                    consecutive_errors = 0
+                else:
+                    time.sleep(0.5)
     
     def validate_coordinates(self, coords):
         lat = coords['latitude']
         lon = coords['longitude']
         
+        # Basic range check
         if abs(lat) > 90 or abs(lon) > 180:
             return False
         if lat == 0.0 and lon == 0.0:
@@ -78,6 +94,7 @@ class GPSHandler:
             distance = self.calculate_distance(self.prev_coords, coords)
             time_diff = coords['timestamp'] - self.prev_coords.get('timestamp', 0)
             if time_diff > 0 and distance / time_diff > 50:  # Max 50 m/s
+                print(f"GPS: Rejecting jump: {distance:.1f}m in {time_diff:.1f}s = {distance/time_diff:.1f}m/s")
                 return False
         
         return True
@@ -115,7 +132,7 @@ class GPSHandler:
         except:
             pass
 
-# Tambahkan class IMUFilter setelah import statements
+# PERBAIKAN: IMULowPassFilter class dengan error handling yang lebih baik
 class IMULowPassFilter:
     """
     Real-time Butterworth low pass filter untuk IMU data
@@ -131,21 +148,31 @@ class IMULowPassFilter:
         self.fs = fs
         nyquist = 0.5 * fs
         
+        # PERBAIKAN: Validasi parameter
+        if accel_cutoff >= nyquist or gyro_cutoff >= nyquist:
+            raise ValueError(f"Cutoff frequencies must be less than Nyquist frequency ({nyquist}Hz)")
+        
         # Design Butterworth filters
-        self.accel_b, self.accel_a = signal.butter(
-            order, accel_cutoff/nyquist, btype='low', analog=False)
-        self.gyro_b, self.gyro_a = signal.butter(
-            order, gyro_cutoff/nyquist, btype='low', analog=False)
+        try:
+            self.accel_b, self.accel_a = signal.butter(
+                order, accel_cutoff/nyquist, btype='low', analog=False)
+            self.gyro_b, self.gyro_a = signal.butter(
+                order, gyro_cutoff/nyquist, btype='low', analog=False)
+        except Exception as e:
+            print(f"Filter design error: {e}")
+            raise
         
         # Initialize filter states (untuk real-time filtering)
-        self.accel_zi = signal.lfilter_zi(self.accel_b, self.accel_a) * 0  # Start from zero
-        self.gyro_zi = signal.lfilter_zi(self.gyro_b, self.gyro_a) * 0
+        self.accel_zi = signal.lfilter_zi(self.accel_b, self.accel_a)
+        self.gyro_zi = signal.lfilter_zi(self.gyro_b, self.gyro_a)
         
         # Buffer untuk startup (opsional, untuk stabilitas awal)
         self.startup_buffer_size = 10
         self.accel_buffer = collections.deque(maxlen=self.startup_buffer_size)
         self.gyro_buffer = collections.deque(maxlen=self.startup_buffer_size)
         self.is_initialized = False
+        
+        print(f"Filter initialized: Accel={accel_cutoff}Hz, Gyro={gyro_cutoff}Hz, FS={fs}Hz, Order={order}")
         
     def filter_imu_data(self, accel_raw, gyro_raw):
         """
@@ -159,6 +186,15 @@ class IMULowPassFilter:
             tuple: (filtered_accel, filtered_gyro)
         """
         
+        # PERBAIKAN: Input validation
+        if not isinstance(accel_raw, (int, float)) or not isinstance(gyro_raw, (int, float)):
+            print(f"Invalid IMU data type: accel={type(accel_raw)}, gyro={type(gyro_raw)}")
+            return 0.0, 0.0
+        
+        if math.isnan(accel_raw) or math.isnan(gyro_raw) or math.isinf(accel_raw) or math.isinf(gyro_raw):
+            print(f"Invalid IMU data values: accel={accel_raw}, gyro={gyro_raw}")
+            return 0.0, 0.0
+        
         # Startup phase - collect data untuk stabilitas
         if not self.is_initialized:
             self.accel_buffer.append(accel_raw)
@@ -170,32 +206,30 @@ class IMULowPassFilter:
                 avg_gyro = sum(self.gyro_buffer) / len(self.gyro_buffer)
                 
                 # Set initial conditions
-                # Set initial conditions properly
-                if hasattr(avg_accel, '__len__'):  # if it's array
-                    self.accel_zi = self.accel_zi * avg_accel
-                else:  # if it's scalar
-                    self.accel_zi = self.accel_zi * avg_accel
-                # Atau lebih simple:
-                self.accel_zi = signal.lfilter_zi(self.accel_b, self.accel_a) * avg_accel
+                self.accel_zi = self.accel_zi * avg_accel
+                self.gyro_zi = self.gyro_zi * avg_gyro
                 self.is_initialized = True
                 
+                print(f"Filter initialized with startup averages: A={avg_accel:.3f}, G={avg_gyro:.3f}")
                 return avg_accel, avg_gyro
             else:
                 # Return moving average selama startup
-                if len(self.accel_buffer) > 0:
-                    return (sum(self.accel_buffer) / len(self.accel_buffer),
-                           sum(self.gyro_buffer) / len(self.gyro_buffer))
-                else:
-                    return accel_raw, gyro_raw
-                        
+                return (sum(self.accel_buffer) / len(self.accel_buffer),
+                       sum(self.gyro_buffer) / len(self.gyro_buffer))
+        
         # Real-time filtering setelah initialized
-        accel_filtered, self.accel_zi = signal.lfilter(
-            self.accel_b, self.accel_a, [accel_raw], zi=self.accel_zi)
-        
-        gyro_filtered, self.gyro_zi = signal.lfilter(
-            self.gyro_b, self.gyro_a, [gyro_raw], zi=self.gyro_zi)
-        
-        return accel_filtered[0], gyro_filtered[0]
+        try:
+            accel_filtered, self.accel_zi = signal.lfilter(
+                self.accel_b, self.accel_a, [accel_raw], zi=self.accel_zi)
+            
+            gyro_filtered, self.gyro_zi = signal.lfilter(
+                self.gyro_b, self.gyro_a, [gyro_raw], zi=self.gyro_zi)
+            
+            return float(accel_filtered[0]), float(gyro_filtered[0])
+            
+        except Exception as e:
+            print(f"Filter processing error: {e}")
+            return accel_raw, gyro_raw  # Fallback ke raw data
     
     def reset(self):
         """Reset filter states"""
@@ -204,12 +238,19 @@ class IMULowPassFilter:
         self.accel_buffer.clear()
         self.gyro_buffer.clear()
         self.is_initialized = False
+        print("Filter reset")
 
-# Modifikasi IMUHandler class
+# PERBAIKAN: IMUHandler class dengan better error handling
 class IMUHandler:
     def __init__(self, i2c=0x68, enable_filter=True, accel_cutoff=15, gyro_cutoff=10):
-        self.imu = mpu9250(i2c)
-        self.imu.calibrate()
+        try:
+            self.imu = mpu9250(i2c)
+            self.imu.calibrate()
+            print(f"IMU initialized successfully at address 0x{i2c:02x}")
+        except Exception as e:
+            print(f"IMU initialization failed: {e}")
+            raise
+            
         self.accel = 0
         self.gyro = 0
         self.running = True
@@ -220,13 +261,18 @@ class IMUHandler:
         # Low pass filter setup
         self.enable_filter = enable_filter
         if self.enable_filter:
-            self.filter = IMULowPassFilter(
-                accel_cutoff=accel_cutoff, 
-                gyro_cutoff=gyro_cutoff,
-                fs=50,  # IMU sampling rate
-                order=2
-            )
-            print(f"IMU Filter enabled: Accel cutoff={accel_cutoff}Hz, Gyro cutoff={gyro_cutoff}Hz")
+            try:
+                self.filter = IMULowPassFilter(
+                    accel_cutoff=accel_cutoff, 
+                    gyro_cutoff=gyro_cutoff,
+                    fs=50,  # IMU sampling rate
+                    order=2
+                )
+                print(f"IMU Filter enabled: Accel cutoff={accel_cutoff}Hz, Gyro cutoff={gyro_cutoff}Hz")
+            except Exception as e:
+                print(f"Filter initialization failed: {e}")
+                self.enable_filter = False
+                print("Falling back to raw IMU data")
         else:
             print("IMU Filter disabled - using raw data")
         
@@ -239,6 +285,9 @@ class IMUHandler:
         self.thread.start()
     
     def update_loop(self):
+        consecutive_errors = 0
+        max_consecutive_errors = 20
+        
         while self.running:
             try:
                 time.sleep(0.02)  # 50Hz IMU
@@ -246,12 +295,24 @@ class IMUHandler:
                 data_accel = self.imu.get_accel_data()
                 data_gyro = self.imu.get_gyro_data()
                 
-                accel_raw = data_accel['x']
-                gyro_raw = math.radians(data_gyro['z'])
+                # PERBAIKAN: Validasi data dari IMU
+                if not data_accel or not data_gyro:
+                    raise ValueError("IMU returned empty data")
+                
+                accel_raw = data_accel.get('x', 0)
+                gyro_raw = math.radians(data_gyro.get('z', 0))
+                
+                # PERBAIKAN: Validasi nilai
+                if math.isnan(accel_raw) or math.isnan(gyro_raw):
+                    raise ValueError(f"IMU returned NaN values: accel={accel_raw}, gyro={gyro_raw}")
                 
                 # Apply filter jika enabled
                 if self.enable_filter:
-                    accel_filtered, gyro_filtered = self.filter.filter_imu_data(accel_raw, gyro_raw)
+                    try:
+                        accel_filtered, gyro_filtered = self.filter.filter_imu_data(accel_raw, gyro_raw)
+                    except Exception as e:
+                        print(f"Filter error: {e}")
+                        accel_filtered, gyro_filtered = accel_raw, gyro_raw
                 else:
                     accel_filtered, gyro_filtered = accel_raw, gyro_raw
                 
@@ -261,11 +322,28 @@ class IMUHandler:
                     self.accel = accel_filtered
                     self.gyro = gyro_filtered
                     self.read_count += 1
+                
+                consecutive_errors = 0  # Reset pada successful read
                     
             except Exception as e:
                 self.error_count += 1
-                print(f"IMU Exception: {e}")
-                time.sleep(0.1)
+                consecutive_errors += 1
+                
+                if consecutive_errors <= 3:  # Print hanya beberapa error pertama
+                    print(f"IMU Exception: {e}")
+                
+                if consecutive_errors >= max_consecutive_errors:
+                    print(f"IMU: Too many consecutive errors ({consecutive_errors}), attempting recovery...")
+                    try:
+                        # Attempt IMU recovery
+                        self.imu.calibrate()
+                        consecutive_errors = 0
+                        time.sleep(1)
+                    except:
+                        print("IMU recovery failed")
+                        time.sleep(2)
+                else:
+                    time.sleep(0.1)
     
     def get_data(self):
         """Get filtered IMU data"""
@@ -286,9 +364,9 @@ class IMUHandler:
     def stop(self):
         self.running = False
         if self.thread.is_alive():
-            self.thread.join()
+            self.thread.join(timeout=3)  # PERBAIKAN: Timeout untuk join
 
-# Modifikasi main_sensor_fusion function
+# PERBAIKAN: Main sensor fusion function dengan better error handling
 def main_sensor_fusion(enable_filter=True, accel_cutoff=15, gyro_cutoff=10):
     """Main sensor fusion dengan optional low pass filter"""
     
@@ -300,20 +378,38 @@ def main_sensor_fusion(enable_filter=True, accel_cutoff=15, gyro_cutoff=10):
     
     # Initialize dengan delay untuk stabilitas
     print("Initializing GPS...")
-    gps_handler = GPSHandler()
-    time.sleep(2)
+    try:
+        gps_handler = GPSHandler()
+        time.sleep(2)
+        print("GPS initialized successfully")
+    except Exception as e:
+        print(f"GPS initialization failed: {e}")
+        return
     
     print("Initializing IMU...")
-    imu_handler = IMUHandler(
-        enable_filter=enable_filter,
-        accel_cutoff=accel_cutoff,
-        gyro_cutoff=gyro_cutoff
-    )
-    time.sleep(2)  # Extra delay untuk filter startup
+    try:
+        imu_handler = IMUHandler(
+            enable_filter=enable_filter,
+            accel_cutoff=accel_cutoff,
+            gyro_cutoff=gyro_cutoff
+        )
+        time.sleep(2)  # Extra delay untuk filter startup
+        print("IMU initialized successfully")
+    except Exception as e:
+        print(f"IMU initialization failed: {e}")
+        gps_handler.stop()
+        return
     
     print("Initializing EKF...")
-    dt = 0.05  # 20Hz main loop
-    ekf = EKFSensorFusion(dt=dt)
+    try:
+        dt = 0.05  # 20Hz main loop
+        ekf = EKFSensorFusion(dt=dt)
+        print("EKF initialized successfully")
+    except Exception as e:
+        print(f"EKF initialization failed: {e}")
+        gps_handler.stop()
+        imu_handler.stop()
+        return
     
     # Setup enhanced logging dengan filter data
     log_queue = Queue()
@@ -359,6 +455,14 @@ def main_sensor_fusion(enable_filter=True, accel_cutoff=15, gyro_cutoff=10):
             try:
                 accel, gyro = imu_handler.get_data()  # Filtered
                 accel_raw, gyro_raw = imu_handler.get_raw_data()  # Raw
+                
+                # PERBAIKAN: Validasi IMU data
+                if math.isnan(accel) or math.isnan(gyro) or math.isinf(accel) or math.isinf(gyro):
+                    print("Invalid IMU data, using zeros")
+                    accel, gyro = 0, 0
+                if math.isnan(accel_raw) or math.isnan(gyro_raw) or math.isinf(accel_raw) or math.isinf(gyro_raw):
+                    accel_raw, gyro_raw = 0, 0
+                    
             except Exception as e:
                 print(f"IMU read error: {e}")
                 accel, gyro = 0, 0
@@ -369,130 +473,157 @@ def main_sensor_fusion(enable_filter=True, accel_cutoff=15, gyro_cutoff=10):
                 ekf.predict(imu_accel=accel, imu_omega=gyro, dt=dt_actual)
                 predict_counter += 1
                 
-                # Extract state setelah predict
-                if len(ekf.state) == 6:
-                    pred_x, pred_y, pred_heading, pred_omega, pred_velocity, pred_accel = ekf.state
-                elif len(ekf.state) == 4:
-                    pred_x, pred_y, pred_heading, pred_velocity = ekf.state
-                    pred_omega = gyro
-                    pred_accel = accel
-                else:
-                    print(f"⚠️ Unexpected EKF state dimension: {len(ekf.state)}")
-                    break
-                
-                pred_heading_deg = math.degrees(pred_heading)
-                
-                # Enhanced logging dengan raw dan filtered data
-                imu_predict_data = [
-                    current_time, dt_actual,
-                    accel_raw, gyro_raw, math.degrees(gyro_raw),  # Raw data
-                    accel, gyro, math.degrees(gyro),              # Filtered data
-                    pred_x, pred_y, pred_heading_deg, pred_velocity, pred_accel,
-                    predict_counter
-                ]
-                imu_predict_queue.put(imu_predict_data)
+                # PERBAIKAN: Better state extraction dengan error handling
+                try:
+                    if len(ekf.state) == 6:
+                        pred_x, pred_y, pred_heading, pred_omega, pred_velocity, pred_accel = ekf.state
+                    elif len(ekf.state) == 4:
+                        pred_x, pred_y, pred_heading, pred_velocity = ekf.state
+                        pred_omega = gyro
+                        pred_accel = accel
+                    else:
+                        print(f"⚠️ Unexpected EKF state dimension: {len(ekf.state)}")
+                        break
+                    
+                    # PERBAIKAN: Validasi state values
+                    if any(math.isnan(val) or math.isinf(val) for val in [pred_x, pred_y, pred_heading, pred_velocity]):
+                        print("⚠️ EKF state contains invalid values, resetting...")
+                        ekf = EKFSensorFusion(dt=dt)  # Reset EKF
+                        continue
+                        
+                    pred_heading_deg = math.degrees(pred_heading)
+                    
+                    # Enhanced logging dengan raw dan filtered data
+                    imu_predict_data = [
+                        current_time, dt_actual,
+                        accel_raw, gyro_raw, math.degrees(gyro_raw),  # Raw data
+                        accel, gyro, math.degrees(gyro),              # Filtered data
+                        pred_x, pred_y, pred_heading_deg, pred_velocity, pred_accel,
+                        predict_counter
+                    ]
+                    imu_predict_queue.put(imu_predict_data)
+                    
+                except Exception as e:
+                    print(f"State extraction error: {e}")
+                    continue
                 
             except Exception as e:
                 print(f"EKF predict error: {e}")
                 last_time = current_time
                 continue
             
-            # GPS handling (unchanged)
-            gps_coords = gps_handler.get_coords()
-            gps_valid = is_gps_valid(gps_coords)
-            gps_updated = False
-            
-            # GPS initialization
-            if gps_valid and not gps_initialized:
-                lat_ref = gps_coords['latitude']
-                lon_ref = gps_coords['longitude'] 
-                alt_ref = gps_coords.get('altitude', 0)
+            # GPS handling
+            try:
+                gps_coords = gps_handler.get_coords()
+                gps_valid = is_gps_valid(gps_coords)
+                gps_updated = False
                 
-                x_gps, y_gps = latlon_to_xy(lat_ref, lon_ref, alt_ref, 
-                                           lat_ref, lon_ref, alt_ref)
-                ekf.state[0] = x_gps
-                ekf.state[1] = y_gps
+                # GPS initialization
+                if gps_valid and not gps_initialized:
+                    lat_ref = gps_coords['latitude']
+                    lon_ref = gps_coords['longitude'] 
+                    alt_ref = gps_coords.get('altitude', 0)
+                    
+                    x_gps, y_gps = latlon_to_xy(lat_ref, lon_ref, alt_ref, 
+                                               lat_ref, lon_ref, alt_ref)
+                    ekf.state[0] = x_gps
+                    ekf.state[1] = y_gps
+                    
+                    gps_initialized = True
+                    print(f"GPS reference set: {lat_ref:.6f}, {lon_ref:.6f}")
                 
-                gps_initialized = True
-                print(f"GPS reference set: {lat_ref:.6f}, {lon_ref:.6f}")
+                # GPS update
+                if gps_valid and gps_initialized:
+                    try:
+                        gps_x, gps_y = latlon_to_xy(gps_coords['latitude'], 
+                                                   gps_coords['longitude'],
+                                                   gps_coords.get('altitude', alt_ref),
+                                                   lat_ref, lon_ref, alt_ref)
+                        
+                        gps_measurement = np.array([gps_x, gps_y])
+                        ekf.update(gps_measurement)
+                        gps_update_counter += 1
+                        gps_updated = True
+                    except Exception as e:
+                        print(f"GPS update error: {e}")
+                        
+            except Exception as e:
+                print(f"GPS handling error: {e}")
             
-            # GPS update
-            if gps_valid and gps_initialized:
-                try:
+            # Extract final state
+            try:
+                if len(ekf.state) == 6:
+                    est_x, est_y, est_heading, est_omega, est_velocity, est_accel = ekf.state
+                elif len(ekf.state) == 4:
+                    est_x, est_y, est_heading, est_velocity = ekf.state
+                    est_omega = gyro
+                    est_accel = accel
+                    
+                est_heading_deg = math.degrees(est_heading)
+                
+            except Exception as e:
+                print(f"Final state extraction error: {e}")
+                continue
+            
+            # Enhanced combined logging
+            try:
+                if gps_valid and gps_initialized:
                     gps_x, gps_y = latlon_to_xy(gps_coords['latitude'], 
                                                gps_coords['longitude'],
                                                gps_coords.get('altitude', alt_ref),
                                                lat_ref, lon_ref, alt_ref)
-                    
-                    gps_measurement = np.array([gps_x, gps_y])
-                    ekf.update(gps_measurement)
-                    gps_update_counter += 1
-                    gps_updated = True
-                except Exception as e:
-                    print(f"GPS update error: {e}")
-            
-            # Extract final state
-            if len(ekf.state) == 6:
-                est_x, est_y, est_heading, est_omega, est_velocity, est_accel = ekf.state
-            elif len(ekf.state) == 4:
-                est_x, est_y, est_heading, est_velocity = ekf.state
-                est_omega = gyro
-                est_accel = accel
+                    log_data = [
+                        current_time, dt_actual,
+                        gps_x, gps_y, gps_coords['latitude'], gps_coords['longitude'],
+                        accel_raw, gyro_raw, math.degrees(gyro_raw),    # Raw IMU
+                        accel, gyro, math.degrees(gyro),                # Filtered IMU
+                        est_x, est_y, est_heading_deg, est_velocity, est_accel,
+                        gps_updated, predict_counter, gps_update_counter
+                    ]
+                else:
+                    log_data = [
+                        current_time, dt_actual,
+                        None, None, None, None,
+                        accel_raw, gyro_raw, math.degrees(gyro_raw),
+                        accel, gyro, math.degrees(gyro),
+                        est_x, est_y, est_heading_deg, est_velocity, est_accel,
+                        False, predict_counter, gps_update_counter
+                    ]
                 
-            est_heading_deg = math.degrees(est_heading)
-            
-            # Enhanced combined logging
-            if gps_valid and gps_initialized:
-                gps_x, gps_y = latlon_to_xy(gps_coords['latitude'], 
-                                           gps_coords['longitude'],
-                                           gps_coords.get('altitude', alt_ref),
-                                           lat_ref, lon_ref, alt_ref)
-                log_data = [
-                    current_time, dt_actual,
-                    gps_x, gps_y, gps_coords['latitude'], gps_coords['longitude'],
-                    accel_raw, gyro_raw, math.degrees(gyro_raw),    # Raw IMU
-                    accel, gyro, math.degrees(gyro),                # Filtered IMU
-                    est_x, est_y, est_heading_deg, est_velocity, est_accel,
-                    gps_updated, predict_counter, gps_update_counter
-                ]
-            else:
-                log_data = [
-                    current_time, dt_actual,
-                    None, None, None, None,
-                    accel_raw, gyro_raw, math.degrees(gyro_raw),
-                    accel, gyro, math.degrees(gyro),
-                    est_x, est_y, est_heading_deg, est_velocity, est_accel,
-                    False, predict_counter, gps_update_counter
-                ]
-            
-            log_queue.put(log_data)
+                log_queue.put(log_data)
+            except Exception as e:
+                print(f"Logging error: {e}")
             
             # Enhanced status print dengan filter info
             if iteration_count % 40 == 0:
-                gps_stats = gps_handler.get_stats()
-                imu_stats = imu_handler.get_stats()
-                
-                filter_info = f" | Filter: {'ON' if enable_filter else 'OFF'}"
-                noise_info = ""
-                if enable_filter:
-                    # Hitung simple noise metric
-                    accel_diff = abs(accel - accel_raw)
-                    gyro_diff = abs(gyro - gyro_raw)
-                    noise_info = f" | Noise Δ: A={accel_diff:.3f} G={math.degrees(gyro_diff):.1f}°"
-                
-                print(f"t={iteration_count*dt:.1f}s | "
-                      f"GPS: {gps_stats['read_count']}/{gps_stats['error_count']} | "
-                      f"IMU: {imu_stats['read_count']}/{imu_stats['error_count']} | "
-                      f"Predicts: {predict_counter} | GPS updates: {gps_update_counter} | "
-                      f"Pos: ({est_x:.2f}, {est_y:.2f}) | "
-                      f"V: {est_velocity:.2f} m/s | "
-                      f"H: {est_heading_deg:.1f}°{filter_info}{noise_info}")
-                
-                # Warning checks
-                if abs(est_velocity) > 30:
-                    print("⚠️ Unrealistic velocity!")
-                if hasattr(ekf, 'P') and np.trace(ekf.P) > 1000:
-                    print("⚠️ EKF covariance exploding!")
+                try:
+                    gps_stats = gps_handler.get_stats()
+                    imu_stats = imu_handler.get_stats()
+                    
+                    filter_info = f" | Filter: {'ON' if enable_filter else 'OFF'}"
+                    noise_info = ""
+                    if enable_filter:
+                        # Hitung simple noise metric
+                        accel_diff = abs(accel - accel_raw)
+                        gyro_diff = abs(gyro - gyro_raw)
+                        noise_info = f" | Noise Δ: A={accel_diff:.3f} G={math.degrees(gyro_diff):.1f}°"
+                    
+                    print(f"t={iteration_count*dt:.1f}s | "
+                          f"GPS: {gps_stats['read_count']}/{gps_stats['error_count']} | "
+                          f"IMU: {imu_stats['read_count']}/{imu_stats['error_count']} | "
+                          f"Predicts: {predict_counter} | GPS updates: {gps_update_counter} | "
+                          f"Pos: ({est_x:.2f}, {est_y:.2f}) | "
+                          f"V: {est_velocity:.2f} m/s | "
+                          f"H: {est_heading_deg:.1f}°{filter_info}{noise_info}")
+                    
+                    # Warning checks
+                    if abs(est_velocity) > 30:
+                        print("⚠️ Unrealistic velocity!")
+                    if hasattr(ekf, 'P') and np.trace(ekf.P) > 1000:
+                        print("⚠️ EKF covariance exploding!")
+                        
+                except Exception as e:
+                    print(f"Status print error: {e}")
             
             iteration_count += 1
             last_time = current_time
@@ -525,6 +656,7 @@ def main_sensor_fusion(enable_filter=True, accel_cutoff=15, gyro_cutoff=10):
         print(f"Combined data logged to: {log_filename}")
         print(f"IMU predict data logged to: {imu_predict_filename}")
 
+# FUNGSI HELPER - tidak berubah dari kode asli
 def is_gps_valid(gps_coords):
     if not gps_coords:
         return False

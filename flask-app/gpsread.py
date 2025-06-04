@@ -33,7 +33,7 @@ class GPSReader:
                     return None
 
             newdata = self.ser.readline()
-            # print(newdata)
+#            print(newdata)
             if newdata:
                 newdata = newdata.decode('ascii', errors='ignore')
                 # print(newdata)
@@ -52,7 +52,7 @@ class GPSReader:
                     # print("Waiting for valid NMEA data...")
                     return None
             else:
-                print("No data received")
+                #print("No data received")
                 return None
 
         except serial.SerialException as e:
@@ -70,7 +70,7 @@ class GPSReader:
             print("GPS connection closed")
 
 if __name__ == "__main__":
-    gps = GPSReader(port="/dev/ttyUSB1")
+    gps = GPSReader(port="/dev/ttyUSB0")
     try:
         while True:
             coords = gps.read()
