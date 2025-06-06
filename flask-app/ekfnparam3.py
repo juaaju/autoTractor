@@ -13,15 +13,14 @@ class EKFSensorFusion:
         self.P = np.eye(4) * 0.1  # Initial covariance lebih kecil
         self.dt = dt
         
-        # Process noise untuk model motion (bukan input noise)
-        # [pos_x_noise, pos_y_noise, phi_noise, v_noise]
-        self.Q = np.diag([0.1, 0.1, 0.01, 0.1])
-        
-        # Measurement noise untuk GPS [x_noise, y_noise]
-        self.R = np.diag([10.0, 10.0])
-        
-        # Input noise untuk IMU [accel_noise, gyro_noise]
-        self.input_noise = np.diag([0.5, 0.1])
+	# More conservative Q (less confident in prediction)
+	self.Q = np.diag([1.0, 1.0, 0.1, 1.0])  # 10x larger
+
+	# More realistic input noise
+	self.input_noise = np.diag([2.0, 0.5])  # Higher IMU noise
+
+	# Keep R as is (GPS trust)
+	self.R = np.diag([5.0, 5.0])
         
     def predict(self, imu_accel: float, imu_omega: float, dt: float = None) -> None:
         if dt is None:

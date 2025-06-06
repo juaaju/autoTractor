@@ -12,6 +12,7 @@ from ekfnparam3 import EKFSensorFusion  # Import EKF Anda
 from mpu9250read import mpu9250
 from mpu6050read import mpu6050
 from gpsimuhandler import GPSHandler, IMUHandler
+import pymap3d as pm
 
 def main_sensor_fusion():
     """Main sensor fusion dengan BENAR-BENAR terpisah IMU predict logging"""
@@ -256,7 +257,7 @@ def is_gps_valid(gps_coords):
     
     return True
 
-def latlon_to_xy(lat, lon, alt, lat_ref, lon_ref, alt_ref):
+def latlon_to_xy_simple(lat, lon, alt, lat_ref, lon_ref, alt_ref):
     """Simple flat earth conversion"""
     R = 6371000  # Earth radius in meters
     
@@ -270,6 +271,11 @@ def latlon_to_xy(lat, lon, alt, lat_ref, lon_ref, alt_ref):
     
     return x, y
 
+def latlon_to_xy(lat, lon, alt, lat_ref, lon_ref, alt_ref):
+    """More accurate conversion using pymap3d"""
+    x, y, z = pm.geodetic2enu(lat, lon, alt, lat_ref, lon_ref, alt_ref)
+    return x, y  # More accurate than flat earth
+    
 def logging_thread_func(q: Queue, filename: str):
     """Combined logging function"""
     with open(filename, mode='w', newline='') as f:

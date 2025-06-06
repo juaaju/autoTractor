@@ -1,15 +1,3 @@
-"""
-Main sensor fusion code dengan integrated low-pass filtering
-untuk mengurangi noise getaran mesin
-
-File: main_sensor_fusion_with_filters.py
-
-Menggunakan:
-- lowpass_filters.py
-- filtered_gpsimuhandler.py
-- ekfnparam3.py (EKF Anda)
-"""
-
 import time
 import numpy as np
 import math
