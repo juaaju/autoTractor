@@ -1,7 +1,7 @@
 import serial
 
 # Ganti port dan baudrate sesuai GPS kamu
-PORT = '/dev/ttyUSB1'         # Contoh untuk Windows, atau '/dev/ttyUSB0' di Linux
+PORT = '/dev/ttyUSB0'         # Contoh untuk Windows, atau '/dev/ttyUSB0' di Linux
 BAUDRATE = 115200   # Umumnya 9600 atau 115200 untuk Quectel
 
 try:
