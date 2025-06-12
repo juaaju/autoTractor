@@ -1,0 +1,1 @@
+timestamp,gps_time,latitude,longitude,altitude,quality,quality_desc,satellites,hdop,rtcm_age,rtcm_count,rtcm_last_sent,diff_station

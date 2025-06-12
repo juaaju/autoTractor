@@ -134,6 +134,9 @@ def main_sensor_fusion_with_filters():
                 # IMU-only EKF predict (TIDAK AKAN di-update GPS!)
                 ekf_imu_only.predict(imu_accel=accel, imu_omega=gyro, dt=dt_actual)
                 
+                # Extract P matrix untuk IMU-only
+                P_matrix_imu = ekf_imu_only.get_covariance()
+                P_trace_imu = np.trace(P_matrix_imu)
                 predict_counter += 1
                 
                 # Extract pure IMU predict dari EKF terpisah
@@ -159,7 +162,7 @@ def main_sensor_fusion_with_filters():
                     pure_pred_x, pure_pred_y, pure_pred_heading_deg, pure_pred_velocity, pure_pred_accel,
                     filter_stats['accel_noise_reduction'], filter_stats['gyro_noise_reduction'],
                     filter_stats.get('accel_cutoff', 0), filter_stats.get('gyro_cutoff', 0),
-                    predict_counter
+                    predict_counter, P_trace_imu  # ✅ Tambahkan P_trace_imu
                 ]
                 imu_predict_queue.put(imu_predict_data)
                 
@@ -204,7 +207,19 @@ def main_sensor_fusion_with_filters():
                     gps_updated = True
                 except Exception as e:
                     print(f"GPS update error: {e}")
-            
+
+            # ===== EXTRACT P, K, INNOVATION DATA UNTUK LOGGING =====
+            P_matrix = ekf_combined.get_covariance()
+            P_trace = np.trace(P_matrix)
+
+            # K dan innovation hanya ada jika GPS update berhasil
+            K_matrix = None if not gps_updated else ekf_combined.get_kalman_gain()
+            innovation_vector = None if not gps_updated else ekf_combined.get_innovation()
+
+            # Format untuk CSV (string format)
+            K_str = str(K_matrix.tolist()) if K_matrix is not None else None
+            innovation_str = str(innovation_vector.tolist()) if innovation_vector is not None else None
+
             # Extract final combined state
             if len(ekf_combined.state) == 6:
                 final_est_x, final_est_y, final_est_heading, final_est_omega, final_est_velocity, final_est_accel = ekf_combined.state
@@ -233,7 +248,8 @@ def main_sensor_fusion_with_filters():
                     final_est_x, final_est_y, final_est_heading_deg, final_est_velocity, final_est_accel,
                     filter_stats['accel_noise_reduction'], filter_stats['gyro_noise_reduction'],
                     gps_updated,
-                    predict_counter, gps_update_counter
+                    predict_counter, gps_update_counter,
+                    P_trace, K_str, innovation_str  # ✅ Tambahkan P, K, innovation
                 ]
             else:
                 log_data = [
@@ -244,7 +260,8 @@ def main_sensor_fusion_with_filters():
                     final_est_x, final_est_y, final_est_heading_deg, final_est_velocity, final_est_accel,
                     filter_stats['accel_noise_reduction'], filter_stats['gyro_noise_reduction'],
                     False,
-                    predict_counter, gps_update_counter
+                    predict_counter, gps_update_counter,
+                    P_trace, K_str, innovation_str  # ✅ Tambahkan P, K, innovation
                 ]
             
             log_queue.put(log_data)
@@ -280,6 +297,7 @@ def main_sensor_fusion_with_filters():
                 print(f"    Filter effectiveness: Accel={filter_stats['accel_noise_reduction']:.1%}, "
                       f"Gyro={filter_stats['gyro_noise_reduction']:.1%}")
                 print(f"    Noise reduction: A={abs(accel_raw-accel):.3f}, G={abs(math.degrees(gyro_raw-gyro)):.1f}°/s")
+                print(f"    P trace: IMU-only={P_trace_imu:.2f}, Combined={P_trace:.2f}")
                 
                 # Warning jika filter tidak efektif
                 if filter_stats['accel_noise_reduction'] < 0.05:
@@ -327,14 +345,12 @@ def main_sensor_fusion_with_filters():
         print(f"   Filter stats: {filter_stats_filename}")
         print("✅ Low-pass filtering successfully reduced engine vibration noise!")
         print("✅ Check filter_stats log untuk melihat efektivitas filtering")
-
-# ===== HELPER FUNCTIONS =====
-
+        print("✅ P, K, dan innovation matrices logged untuk analisis EKF performance")
 
 # ===== LOGGING FUNCTIONS =====
 
 def combined_logging_func(q: Queue, filename: str):
-    """Enhanced combined logging dengan filter info"""
+    """Enhanced combined logging dengan filter info dan EKF matrices"""
     with open(filename, mode='w', newline='') as f:
         writer = csv.writer(f)
         writer.writerow([
@@ -343,7 +359,8 @@ def combined_logging_func(q: Queue, filename: str):
             'accel_raw', 'gyro_raw_rad', 'gyro_raw_deg',
             'est_x', 'est_y', 'est_heading_deg', 'est_velocity', 'est_accel',
             'accel_filter_effectiveness', 'gyro_filter_effectiveness',
-            'gps_updated', 'predict_count', 'gps_update_count'
+            'gps_updated', 'predict_count', 'gps_update_count', 
+            'P_trace', 'K_matrix', 'innovation_vector'  # ✅ Tambahkan kolom P, K, innovation
         ])
         while True:
             row = q.get()
@@ -352,7 +369,7 @@ def combined_logging_func(q: Queue, filename: str):
             writer.writerow(row)
 
 def imu_predict_logging_func(q: Queue, filename: str):
-    """Enhanced IMU predict logging dengan filter comparison"""
+    """Enhanced IMU predict logging dengan filter comparison dan P matrix"""
     with open(filename, mode='w', newline='') as f:
         writer = csv.writer(f)
         writer.writerow([
@@ -363,7 +380,7 @@ def imu_predict_logging_func(q: Queue, filename: str):
             'predict_velocity', 'predict_accel', 
             'accel_filter_effectiveness', 'gyro_filter_effectiveness',
             'accel_cutoff_hz', 'gyro_cutoff_hz',
-            'predict_count'
+            'predict_count', 'P_trace'  # ✅ Tambahkan kolom P_trace
         ])
         while True:
             row = q.get()
@@ -639,13 +656,17 @@ def test_imu_predict_only_filtered():
                 
                 pred_heading_deg = math.degrees(pred_heading)
                 
+                # Extract P matrix
+                P_matrix = ekf.get_covariance()
+                P_trace = np.trace(P_matrix)
+                
                 # Print status dengan filter info
                 if iteration_counter % 20 == 0:
                     noise_accel = abs(accel_r - accel_f)
                     noise_gyro = abs(math.degrees(gyro_r - gyro_f))
                     
                     print(f"#{iteration_counter}: Pos({pred_x:.2f}, {pred_y:.2f}) | "
-                          f"H:{pred_heading_deg:.1f}° | V:{pred_velocity:.2f}")
+                          f"H:{pred_heading_deg:.1f}° | V:{pred_velocity:.2f} | P_trace:{P_trace:.2f}")
                     print(f"    Filter: A_noise={noise_accel:.3f} G_noise={noise_gyro:.1f}°/s | "
                           f"Effectiveness: {stats['accel_noise_reduction']:.1%}, {stats['gyro_noise_reduction']:.1%}")
                 
@@ -679,6 +700,48 @@ def test_gps_only():
             time.sleep(0.5)
     finally:
         gps_handler.stop()
+
+def quick_filter_demo():
+    """Quick demo untuk melihat efek filtering dalam waktu singkat"""
+    print("=== Quick Filter Demo ===")
+    print("Menunjukkan perbedaan data raw vs filtered dalam 10 detik")
+    
+    print("Initializing filtered IMU...")
+    imu_handler = FilteredIMUHandler(
+        application_type='vehicle',
+        accel_filter_config={'cutoff': 3.0, 'type': 'butterworth', 'adaptive': False},
+        gyro_filter_config={'cutoff': 5.0, 'type': 'butterworth', 'adaptive': False}
+    )
+    time.sleep(2)
+    
+    print("\nData comparison (Raw vs Filtered):")
+    print("Time\tAccel_Raw\tAccel_Filt\tDiff\tGyro_Raw\tGyro_Filt\tDiff")
+    print("-" * 70)
+    
+    try:
+        start_time = time.time()
+        for i in range(50):  # 10 seconds at 5Hz
+            try:
+                accel_f, gyro_f, accel_r, gyro_r = imu_handler.get_data(return_raw=True)
+                
+                elapsed = time.time() - start_time
+                accel_diff = abs(accel_r - accel_f)
+                gyro_diff = abs(math.degrees(gyro_r - gyro_f))
+                
+                print(f"{elapsed:.1f}s\t{accel_r:.3f}\t\t{accel_f:.3f}\t\t{accel_diff:.3f}\t"
+                      f"{math.degrees(gyro_r):6.1f}°/s\t{math.degrees(gyro_f):6.1f}°/s\t{gyro_diff:5.1f}°/s")
+                
+            except Exception as e:
+                print(f"Error: {e}")
+            
+            time.sleep(0.2)
+        
+        print("\n✅ Demo selesai. Filter berhasil mengurangi noise!")
+        
+    except KeyboardInterrupt:
+        print("\nDemo dihentikan oleh user")
+    finally:
+        imu_handler.stop()
 
 if __name__ == "__main__":
     main()

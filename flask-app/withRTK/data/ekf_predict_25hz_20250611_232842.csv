@@ -1,0 +1,1 @@
+time,dt,accel_filtered,gyro_filtered_rad,gyro_filtered_deg,accel_raw,gyro_raw_rad,gyro_raw_deg,predict_x,predict_y,predict_heading_deg,predict_velocity,predict_accel,accel_filter_effectiveness,gyro_filter_effectiveness,accel_cutoff_hz,gyro_cutoff_hz,predict_count,P_trace

@@ -1,0 +1,1 @@
+time,dt,accel_filtered,gyro_filtered_rad,gyro_filtered_deg,accel_raw,gyro_raw_rad,gyro_raw_deg,accel_filter_effectiveness,gyro_filter_effectiveness,accel_cutoff_hz,gyro_cutoff_hz

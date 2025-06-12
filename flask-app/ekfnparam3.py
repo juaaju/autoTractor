@@ -13,14 +13,18 @@ class EKFSensorFusion:
         self.P = np.eye(4) * 0.1  # Initial covariance lebih kecil
         self.dt = dt
         
-	# More conservative Q (less confident in prediction)
-	self.Q = np.diag([1.0, 1.0, 0.1, 1.0])  # 10x larger
+        # More conservative Q (less confident in prediction)
+        self.Q = np.diag([1.0, 1.0, 0.1, 1.0])  # 10x larger
 
-	# More realistic input noise
-	self.input_noise = np.diag([2.0, 0.5])  # Higher IMU noise
+        # More realistic input noise
+        self.input_noise = np.diag([2.0, 0.5])  # Higher IMU noise
 
-	# Keep R as is (GPS trust)
-	self.R = np.diag([5.0, 5.0])
+        # Keep R as is (GPS trust)
+        self.R = np.diag([5.0, 5.0])
+        
+        # Tambahan untuk menyimpan K dan innovation
+        self.K = None
+        self.innovation = None
         
     def predict(self, imu_accel: float, imu_omega: float, dt: float = None) -> None:
         if dt is None:
@@ -70,16 +74,16 @@ class EKFSensorFusion:
         # Innovation covariance
         S = H @ self.P @ H.T + self.R
         
-        # Kalman gain
-        K = self.P @ H.T @ np.linalg.inv(S)
+        # Kalman gain - simpan untuk akses nanti
+        self.K = self.P @ H.T @ np.linalg.inv(S)
         
-        # Innovation (measurement residual)
+        # Innovation (measurement residual) - simpan untuk akses nanti
         predicted_measurement = H @ self.state
-        y = gps_measurement - predicted_measurement
+        self.innovation = gps_measurement - predicted_measurement
         
         # Update state and covariance
-        self.state = self.state + K @ y
-        self.P = (np.eye(4) - K @ H) @ self.P
+        self.state = self.state + self.K @ self.innovation
+        self.P = (np.eye(4) - self.K @ H) @ self.P
         
     def get_position(self) -> Tuple[float, float]:
         return self.state[0], self.state[1]
@@ -89,6 +93,16 @@ class EKFSensorFusion:
         
     def get_velocity(self) -> float:
         return self.state[3]
+    
+    # Getter methods baru
+    def get_covariance(self) -> np.ndarray:
+        return self.P.copy()
+    
+    def get_kalman_gain(self) -> np.ndarray:
+        return self.K.copy() if self.K is not None else None
+    
+    def get_innovation(self) -> np.ndarray:
+        return self.innovation.copy() if self.innovation is not None else None
 
 
 # Contoh penggunaan dengan debugging
@@ -108,8 +122,12 @@ class EKFDebugger:
         cov_after_predict = np.trace(self.ekf.P)
         
         # Update step (jika ada GPS)
+        K_matrix = None
+        innovation_vector = None
         if gps_pos is not None:
             self.ekf.update(gps_pos)
+            K_matrix = self.ekf.get_kalman_gain()
+            innovation_vector = self.ekf.get_innovation()
             
         state_final = self.ekf.state.copy()
         cov_final = np.trace(self.ekf.P)
@@ -124,7 +142,9 @@ class EKFDebugger:
             'cov_final': cov_final,
             'imu_accel': imu_accel,
             'imu_omega': imu_omega,
-            'gps_pos': gps_pos
+            'gps_pos': gps_pos,
+            'kalman_gain': K_matrix,
+            'innovation': innovation_vector
         }
         
         self.history.append(step_info)
@@ -172,3 +192,9 @@ if __name__ == "__main__":
         
         print(f"Step {i}: x={state[0]:.2f}, y={state[1]:.2f}, "
               f"phi={state[2]:.3f}, v={state[3]:.2f}")
+        
+        # Contoh akses P, K, dan innovation
+        if gps_pos is not None:
+            print(f"  Kalman gain: {ekf.get_kalman_gain()}")
+            print(f"  Innovation: {ekf.get_innovation()}")
+            print(f"  Covariance trace: {np.trace(ekf.get_covariance()):.2f}")

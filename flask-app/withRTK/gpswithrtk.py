@@ -15,7 +15,7 @@ import pynmea2
 import queue
 
 class RTKLIBGPSCorrector:
-    def __init__(self, gps_port='/dev/ttyUSB0', gps_baudrate=115200):
+    def __init__(self, gps_port='/dev/ttyUSB1', gps_baudrate=115200):
         self.rtcm_count = 0
         self.last_rtcm_time = 0
         
@@ -445,7 +445,7 @@ def main():
     print("Note: rnx2rtkp adalah post-processing tool, untuk real-time gunakan simple_rtk_corrector.py")
     
     # Inisialisasi corrector
-    corrector = RTKLIBGPSCorrector(gps_port='/dev/ttyUSB0', gps_baudrate=115200)
+    corrector = RTKLIBGPSCorrector(gps_port='/dev/ttyUSB1', gps_baudrate=115200)
     
     # Konfigurasi NTRIP
     ntrip_config = {

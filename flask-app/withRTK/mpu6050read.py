@@ -80,13 +80,13 @@ class mpu6050:
 
     def calibrate(self):
         """Simple calibration - call this once when sensor is still."""
-        print("Calibrating... Keep sensor still for 2 seconds")
+        print("Calibrating... Keep sensor still for 10 seconds")
         
         accel_sum = {'x': 0, 'y': 0, 'z': 0}
         gyro_sum = {'x': 0, 'y': 0, 'z': 0}
         
         # Take 200 samples
-        for i in range(200):
+        for i in range(1000):
             accel = self.get_accel_data()
             gyro = self.get_gyro_data()
             
@@ -101,13 +101,13 @@ class mpu6050:
             sleep(0.01)
         
         # Calculate bias (average)
-        self.accel_bias['x'] = accel_sum['x'] / 200
-        self.accel_bias['y'] = accel_sum['y'] / 200
-        self.accel_bias['z'] = (accel_sum['z'] / 200) - self.GRAVITIY_MS2  # Z should be 9.8 m/s²
+        self.accel_bias['x'] = accel_sum['x'] / 1000
+        self.accel_bias['y'] = accel_sum['y'] / 1000
+        self.accel_bias['z'] = (accel_sum['z'] / 1000) - self.GRAVITIY_MS2  # Z should be 9.8 m/s²
         
-        self.gyro_bias['x'] = gyro_sum['x'] / 200
-        self.gyro_bias['y'] = gyro_sum['y'] / 200
-        self.gyro_bias['z'] = gyro_sum['z'] / 200
+        self.gyro_bias['x'] = gyro_sum['x'] / 1000
+        self.gyro_bias['y'] = gyro_sum['y'] / 1000
+        self.gyro_bias['z'] = gyro_sum['z'] / 1000
         
         print("Calibration done!")
 

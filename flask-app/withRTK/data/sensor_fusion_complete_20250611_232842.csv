@@ -1,0 +1,1 @@
+time,dt,gps_x,gps_y,lat,lon,accel_filtered,gyro_filtered_rad,gyro_filtered_deg,accel_raw,gyro_raw_rad,gyro_raw_deg,est_x,est_y,est_heading_deg,est_velocity,est_accel,accel_filter_effectiveness,gyro_filter_effectiveness,gps_updated,predict_count,gps_update_count,P_trace,K_matrix,innovation_vector

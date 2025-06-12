@@ -11,7 +11,7 @@ from ntripclient import NtripClient
 import pynmea2
 
 class CompleteRTKSystem:
-    def __init__(self, gps_port='/dev/ttyUSB0', gps_baudrate=115200):
+    def __init__(self, gps_port='/dev/ttyUSB1', gps_baudrate=115200):
         self.gps_port = gps_port
         self.gps_baudrate = gps_baudrate
         self.gps_serial = None
@@ -317,14 +317,14 @@ def main():
     print("=" * 50)
     
     # Initialize system
-    rtk_system = CompleteRTKSystem(gps_port='/dev/ttyUSB0', gps_baudrate=115200)
+    rtk_system = CompleteRTKSystem(gps_port='/dev/ttyUSB1', gps_baudrate=115200)
     
     # NTRIP configuration
     ntrip_config = {
         'user': 'toor:toor123456',
         'caster': 'nrtk.big.go.id',
         'port': 2001,
-        'mountpoint': '/vrs-rtcm3',
+        'mountpoint': '/Nearest-rtcm3',
         'lat': -7.2839114,
         'lon': 112.7961259,
         'height': 10.0,
